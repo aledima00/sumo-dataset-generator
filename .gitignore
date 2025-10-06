@@ -9,5 +9,4 @@ wheels/
 # Virtual environments
 .venv
 
-sumo_files_v2v_map_congestion/
-sumo_files_v2v_map_lanemerge/
+provided/
