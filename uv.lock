@@ -82,10 +82,33 @@ source = { virtual = "." }
 dependencies = [
     { name = "click" },
     { name = "numpy" },
+    { name = "sumolib" },
+    { name = "traci" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "click", specifier = ">=8.3.0" },
     { name = "numpy", specifier = ">=2.3.3" },
+    { name = "sumolib", specifier = ">=1.24.0" },
+    { name = "traci", specifier = ">=1.24.0" },
+]
+
+[[package]]
+name = "sumolib"
+version = "1.24.0"
+source = { registry = "https://pypi.org/simple" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/f0/35/9c524281aab9550187d638862ceb663cb2d31fe04bb630aeb109faf81432/sumolib-1.24.0-py3-none-any.whl", hash = "sha256:d4e8c0315dd240af60665cb7c0f34f876abf91daab73f53c17a5c8284c0acd5d", size = 278150, upload-time = "2025-07-22T16:02:15.915Z" },
+]
+
+[[package]]
+name = "traci"
+version = "1.24.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "sumolib" },
+]
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/c3/69/e73f97bae5ff291f11e39b46f73a70b9ec7301b578f5e857786256ed3a70/traci-1.24.0-py3-none-any.whl", hash = "sha256:eb273d596d7279cbe5734ec23297e8689b78526d43089f7e21a9f3fb3de4fdea", size = 278387, upload-time = "2025-07-22T16:02:17.637Z" },
 ]

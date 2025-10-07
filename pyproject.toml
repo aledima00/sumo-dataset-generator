@@ -7,4 +7,6 @@ requires-python = ">=3.13"
 dependencies = [
     "click>=8.3.0",
     "numpy>=2.3.3",
+    "sumolib>=1.24.0",
+    "traci>=1.24.0",
 ]
