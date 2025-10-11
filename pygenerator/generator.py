@@ -1,0 +1,138 @@
+#from generated.roundabout import rawcfg
+from .graph import Graph as _G
+from .vehicles import VType as _VT, Vehicle as _VH
+import random as _RND
+
+# nodes_raw = ("nw","ne","se","sw")
+# edges_raw = [
+#     ("ne", "nw"),
+#     ("nw", "sw"),
+#     ("sw", "se"),
+#     ("se", "ne"),
+#     ("se", "sw"),
+#     ("sw", "nw"),
+#     ("nw", "ne"),
+#     ("ne", "se")
+# ]
+
+# file params
+# OUTPUT_FILE = path.join(path.dirname(__file__),"generated","roundabout","cars.rou.xml")
+# TIME_HORIZON_S = 600  # 10 minutes
+
+# # route generation params
+# N_ROUTES = 10
+# MIN_RTLEN = 2
+# MAX_RTLEN = 6
+# # G = Graph(nodes_raw=nodes_raw,edges_raw=edges_raw)
+# # Node = G.NCL
+# # Route = G.RCL
+# # routes = [G.randomRoute(f"RT{i}",min_steps=MIN_RTLEN,max_steps=MAX_RTLEN) for i in range(N_ROUTES)]
+
+# vehicle generation params
+# VNUM = 100
+# TDEV_PROP = 0.1
+# TDEV = TDEV_PROP * TIME_HORIZON_S
+
+# ip_probabs = {
+#     "NORMAL": (0.5,IParams(speed_factor=1.0, speed_dev=0.1, min_gap_m=2.5)),
+#     "CAUTIOUS": (0.2,IParams(speed_factor=0.8, speed_dev=0.05, min_gap_m=3.5)),
+#     "AGGRESSIVE": (0.2,IParams(speed_factor=1.2, speed_dev=0.15, min_gap_m=2.0)),
+#     "RECKLESS": (0.05,IParams(speed_factor=1.5, speed_dev=0.2, min_gap_m=1.5)),
+#     "AUTHORIZED": (0.05,IParams(speed_factor=2.0, speed_dev=0.25, min_gap_m=0.5))
+# }
+
+# vp_probabs = {
+#     "CAR" : (0.55,VParams(accel=2.6, decel=4.5, emergency_decel=9.0, length_m=5.0, max_speed_kmh=180.0)),
+#     "RACECAR" : (0.02,VParams(accel=4.0, decel=8.0, emergency_decel=13.0, length_m=4.5, max_speed_kmh=300.0)),
+#     "TRUCK" : (0.07,VParams(accel=1.2, decel=3.5, emergency_decel=7.0, length_m=12.0, max_speed_kmh=120.0)),
+#     "BUS" : (0.07,VParams(accel=1.5, decel=3.0, emergency_decel=8.0, length_m=10.0, max_speed_kmh=130.0)),
+#     "MOTORCYCLE" : (0.29,VParams(accel=3.5, decel=5.0, emergency_decel=10.0, length_m=2.5, max_speed_kmh=220.0))
+# }
+
+# vcl_params = {
+#     "PASSENGER": (0.95,VClass.PASSENGER.value),
+#     "EMERGENCY": (0.02,VClass.EMERGENCY.value),
+#     "AUTHORITY": (0.02,VClass.AUTHORITY.value),
+#     "ARMY": (0.01,VClass.ARMY.value)
+# }
+
+# generate vtypes and associated probabilities
+
+class Generator:
+    def __init__(self,*,OUTPUT_FILE:str,TIME_HORIZON_S:int,N_ROUTES:int,MIN_RTLEN:int,MAX_RTLEN:int,VNUM:int,TDEV_PROP:float,ip_probabs:dict,vp_probabs:dict,vcl_params:dict,graph:_G):
+        self.OUTPUT_FILE = OUTPUT_FILE
+        self.TIME_HORIZON_S = TIME_HORIZON_S
+        self.N_ROUTES = N_ROUTES
+        self.MIN_RTLEN = MIN_RTLEN
+        self.MAX_RTLEN = MAX_RTLEN
+        self.VNUM = VNUM
+        self.TDEV = TDEV_PROP * TIME_HORIZON_S
+        self.ip_probabs = ip_probabs
+        self.vp_probabs = vp_probabs
+        self.vcl_params = vcl_params
+        self.vtypes = Generator.__gen_vtypes(ip_probabs,vp_probabs,vcl_params)
+        self.graph = graph
+    
+    @staticmethod
+    def __gen_vtypes(ip_probabs,vp_probabs,vcl_params):
+        vtypes = []
+        for ipn,(ipp,ip) in ip_probabs.items():
+            for vpn,(vpp,vp) in vp_probabs.items():
+                for vcln,(vclp,vcl) in vcl_params.items():
+                    vtypes.append( (_VT(f"{vpn}_{ipn}_{vcln}", vp=vp, ip=ip, v_class=vcl), ipp*vpp*vclp))
+        return vtypes
+    
+    @staticmethod
+    def __draw_vtype(vtypes)->_VT:
+        r = _RND.random()
+        acc = 0.0
+        for vt,pp in vtypes:
+            acc += pp
+            if r <= acc:
+                return vt
+    
+    @staticmethod
+    def __comment(s:str)->str:
+        return f"<!-- {s} -->\n"
+
+    
+        
+    def generate(self):
+
+        routes = [self.graph.randomRoute(f"RT{i}",min_steps=self.MIN_RTLEN,max_steps=self.MAX_RTLEN) for i in range(self.N_ROUTES)]
+        dts = sorted([max(_RND.gauss(mu=self.TIME_HORIZON_S*i/self.VNUM,sigma=self.TDEV),0.0) for i in range(self.VNUM)])
+        used_vtypes = set()
+        vehicles = []
+        for i in range(self.VNUM):
+            vt = Generator.__draw_vtype(self.vtypes)
+            used_vtypes.add(vt)
+            rt = _RND.choice(routes)
+            vehicles.append(_VH(f"VEH{i}", vt.id, rt.id, dts[i]))
+
+        with open (self.OUTPUT_FILE,'w') as f:
+            def wc(s,*,tabs=0):
+                f.write(f"{'\t'*tabs}{Generator.__comment(s)}")
+            wc(f"Generated vehicle file: {self.N_ROUTES} routes, {self.VNUM} vehicles")
+            wc(f">> {self.N_ROUTES} routes, each {self.MIN_RTLEN} to {self.MAX_RTLEN} edges long")
+            wc(f">> {self.VNUM} vehicles, depart times ~ N({self.TIME_HORIZON_S/2}s, {self.TDEV}s)")
+            wc(f">> Vehicle types from {len(self.vtypes)} combinations, {len(used_vtypes)} used")
+            f.write('<routes>\n')
+
+            wc("Routes",tabs=1)
+            for r in routes:
+                f.write(f'\t{r.xml()}\n')
+            f.write('\n')
+
+            wc("Vehicle Types",tabs=1)
+            for vt in used_vtypes:
+                f.write(f"\t{vt.xml()}\n")
+            f.write('\n')
+            
+            wc("Vehicles",tabs=1)
+            for v in vehicles:
+                f.write(f"\t{v.xml()}\n")
+            f.write('\n')
+
+            f.write('</routes>\n')
+
+        print(f"Generated {self.OUTPUT_FILE} with {len(routes)} routes and {len(vehicles)} vehicles, using {len(used_vtypes)} vtypes out of {len(self.vtypes)} possible combinations")
