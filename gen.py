@@ -19,15 +19,15 @@ G = Graph(nodes_raw=nodes_raw,edges_raw=edges_raw)
 
 # file params
 OUTPUT_FILE = path.join(path.dirname(__file__),"generated","roundabout","cars.rou.xml")
-TIME_HORIZON_S = 600  # 10 minutes
+TIME_HORIZON_S = 200  # seconds
 
 # route generation params
 N_ROUTES = 10
-MIN_RTLEN = 2
+MIN_RTLEN = 3
 MAX_RTLEN = 6
 
 # vehicle generation params
-VNUM = 100
+VNUM = 50
 TDEV_PROP = 0.1
 
 ip_probabs = {
@@ -53,6 +53,13 @@ vcl_params = {
     "ARMY": (0.01,VClass.ARMY.value)
 }
 
+probabilistic_mod_multipliers={
+    "DAMAGED_BRAKES": {"p":0.04, "modifications":{"decel":0.7, "emergency_decel":0.3}},
+    "FLAT_TIRE": {"p":0.07, "modifications":{"max_speed_kmh":0.7}},
+    "HEAVY_LOAD": {"p":0.1, "modifications":{"accel":0.8, "max_speed_kmh":0.9}},
+    "DISTRACTED_DRIVER": {"p":0.1, "modifications":{"speed_factor":0.9, "speed_dev":1.5, "min_gap_m":0.5, "emergency_decel":0.8}}
+}
+
 def main():
     generator = Generator(
         OUTPUT_FILE=OUTPUT_FILE,
@@ -65,7 +72,8 @@ def main():
         ip_probabs=ip_probabs,
         vp_probabs=vp_probabs,
         vcl_params=vcl_params,
-        graph=G
+        graph=G,
+        probabilistic_mod_multipliers=probabilistic_mod_multipliers
     )
 
     generator.generate()

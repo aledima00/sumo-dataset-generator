@@ -59,7 +59,7 @@ import random as _RND
 # generate vtypes and associated probabilities
 
 class Generator:
-    def __init__(self,*,OUTPUT_FILE:str,TIME_HORIZON_S:int,N_ROUTES:int,MIN_RTLEN:int,MAX_RTLEN:int,VNUM:int,TDEV_PROP:float,ip_probabs:dict,vp_probabs:dict,vcl_params:dict,graph:_G):
+    def __init__(self,*,OUTPUT_FILE:str,TIME_HORIZON_S:int,N_ROUTES:int,MIN_RTLEN:int,MAX_RTLEN:int,VNUM:int,TDEV_PROP:float,ip_probabs:dict,vp_probabs:dict,vcl_params:dict,graph:_G,probabilistic_mod_multipliers:dict={}):
         self.OUTPUT_FILE = OUTPUT_FILE
         self.TIME_HORIZON_S = TIME_HORIZON_S
         self.N_ROUTES = N_ROUTES
@@ -72,6 +72,7 @@ class Generator:
         self.vcl_params = vcl_params
         self.vtypes = Generator.__gen_vtypes(ip_probabs,vp_probabs,vcl_params)
         self.graph = graph
+        self.probabilistic_mod_multipliers = probabilistic_mod_multipliers
     
     @staticmethod
     def __gen_vtypes(ip_probabs,vp_probabs,vcl_params):
@@ -97,6 +98,18 @@ class Generator:
 
     
         
+    def apply_random_modificators(self,vt:_VT)->_VT:
+        nvt = _VT(vt.id, vp=vt.vp, ip=vt.ip, v_class=vt.v_class)
+        for modname,moddata in self.probabilistic_mod_multipliers.items():
+            if _RND.random() <= moddata["p"]:
+                for attr,mult in moddata["modifications"].items():
+                    if hasattr(nvt.vp,attr):
+                        setattr(nvt.vp,attr,getattr(nvt.vp,attr)*mult)
+                    elif hasattr(nvt.ip,attr):
+                        setattr(nvt.ip,attr,getattr(nvt.ip,attr)*mult)
+                nvt.id += f"_{modname}"
+        return nvt
+    
     def generate(self):
 
         routes = [self.graph.randomRoute(f"RT{i}",min_steps=self.MIN_RTLEN,max_steps=self.MAX_RTLEN) for i in range(self.N_ROUTES)]
@@ -105,6 +118,7 @@ class Generator:
         vehicles = []
         for i in range(self.VNUM):
             vt = Generator.__draw_vtype(self.vtypes)
+            vt = self.apply_random_modificators(vt)
             used_vtypes.add(vt)
             rt = _RND.choice(routes)
             vehicles.append(_VH(f"VEH{i}", vt.id, rt.id, dts[i]))
