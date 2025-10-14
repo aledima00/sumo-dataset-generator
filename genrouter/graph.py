@@ -1,4 +1,4 @@
-import random as __RND
+import random as _RND
 
 
 class LocDirNode:
@@ -55,11 +55,11 @@ class Graph:
         def length(self):
             return len(self.path)
         def randAddStep(self):
-            current_node = self.path[-1].to_node if self.length()>0 else self.src_node
+            current_node = self.path[-1].to_node() if self.length()>0 else self.src_node
             edges = self.graph.edgesFrom(current_node)
             if len(edges)==0:
                 return # TRUNCATE IF NO NEIGHBORS
-            next_edge = __RND.choice(edges)
+            next_edge = _RND.choice(list(edges))
             self.path.append(next_edge)
         def randExtend(self, steps:int):
             for _ in range(steps):
@@ -102,7 +102,7 @@ class Graph:
                 self.addRawEdge(from_id,to_id)
 
     def randomNode(self):
-        return __RND.choice(self.__nodes)
+        return _RND.choice(list(self.__nodes))
     def nodes(self):
         return self.__nodes
     def edges(self):
@@ -111,9 +111,16 @@ class Graph:
     def edgesFrom(self,node:LocDirNode):
         return {e for e in self.__edges if e.from_node() == node}
     
-    def randomRoute(self,id:str,*,min_steps=0,max_steps=None,source_node_choices:set=None):
-        steps = __RND.randint(min_steps, max_steps if max_steps is not None else min_steps)
-        n = __RND.choice(source_node_choices) if source_node_choices is not None else self.randomNode()
+    def randomRoute(self,id:str,*,min_steps=0,max_steps=None,source_node_ids:list=None):
+        steps = _RND.randint(min_steps, max_steps if max_steps is not None else min_steps)
+        n = None
+        if source_node_ids is not None:
+            n_id = _RND.choice(list(source_node_ids))
+            n = next((n for n in self.__nodes if n.id()==n_id),None)
+            if n is None:
+                raise ValueError(f"Source node with id {n_id} not found in graph")
+        else:
+            n = self.randomNode()
         r = Graph.Route(id=id,src_node=n,graph=self)
         r.randExtend(steps)
         return r
