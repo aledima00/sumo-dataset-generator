@@ -73,7 +73,8 @@ def main():
         vp_probabs=vp_probabs,
         vcl_params=vcl_params,
         graph=G,
-        probabilistic_mod_multipliers=probabilistic_mod_multipliers
+        probabilistic_mod_multipliers=probabilistic_mod_multipliers,
+        source_nodes=[G.NCL(n) for n in ("cwsn","ccwsn")]
     )
 
     generator.generate()

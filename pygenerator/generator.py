@@ -59,7 +59,7 @@ import random as _RND
 # generate vtypes and associated probabilities
 
 class Generator:
-    def __init__(self,*,OUTPUT_FILE:str,TIME_HORIZON_S:int,N_ROUTES:int,MIN_RTLEN:int,MAX_RTLEN:int,VNUM:int,TDEV_PROP:float,ip_probabs:dict,vp_probabs:dict,vcl_params:dict,graph:_G,probabilistic_mod_multipliers:dict={}):
+    def __init__(self,*,OUTPUT_FILE:str,TIME_HORIZON_S:int,N_ROUTES:int,MIN_RTLEN:int,MAX_RTLEN:int,VNUM:int,TDEV_PROP:float,ip_probabs:dict,vp_probabs:dict,vcl_params:dict,graph:_G,probabilistic_mod_multipliers:dict={},source_nodes:list=None):
         self.OUTPUT_FILE = OUTPUT_FILE
         self.TIME_HORIZON_S = TIME_HORIZON_S
         self.N_ROUTES = N_ROUTES
@@ -73,6 +73,7 @@ class Generator:
         self.vtypes = Generator.__gen_vtypes(ip_probabs,vp_probabs,vcl_params)
         self.graph = graph
         self.probabilistic_mod_multipliers = probabilistic_mod_multipliers
+        self.source_nodes = source_nodes
     
     @staticmethod
     def __gen_vtypes(ip_probabs,vp_probabs,vcl_params):
@@ -112,7 +113,7 @@ class Generator:
     
     def generate(self):
 
-        routes = [self.graph.randomRoute(f"RT{i}",min_steps=self.MIN_RTLEN,max_steps=self.MAX_RTLEN) for i in range(self.N_ROUTES)]
+        routes = [self.graph.randomRoute(f"RT{i}",min_steps=self.MIN_RTLEN,max_steps=self.MAX_RTLEN,source_nodes=self.source_nodes) for i in range(self.N_ROUTES)]
         dts = sorted([max(_RND.gauss(mu=self.TIME_HORIZON_S*i/self.VNUM,sigma=self.TDEV),0.0) for i in range(self.VNUM)])
         used_vtypes = set()
         vehicles = []

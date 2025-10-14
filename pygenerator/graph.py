@@ -65,9 +65,9 @@ class Graph:
         return random.choice(self.__nodes)
     def nodes(self):
         return self.__nodes
-    def randomRoute(self,id:str,*,no_turnback:bool=True,min_steps=0,max_steps=None,from_node=None):
+    def randomRoute(self,id:str,*,no_turnback:bool=True,min_steps=0,max_steps=None,source_nodes:list=None):
         steps = random.randint(min_steps, max_steps if max_steps is not None else min_steps)
-        n = from_node if from_node is not None else self.randomNode()
+        n = random.choice(source_nodes) if source_nodes is not None else self.randomNode()
         r = self.RCL([n],id=id,no_turnback=no_turnback)
         r.randExtend(steps)
         return r
