@@ -1,6 +1,9 @@
 from os import path
 from genrouter import Graph, IParams, VParams, VClass, Generator, loadPyConfig
 import click
+import colorama
+from colorama import Fore, Style
+colorama.init(autoreset=True)
 
 
 # ==================== GENERATOR PROBABILITY DICTIONARIES ====================
@@ -65,8 +68,11 @@ def main(gname,time,nroutes,minrtlen,maxrtlen,vnum,tdevp,oname:str):
     OUTPUT_FILE = path.join(FOLDER_PATH,f"{gname}.rou.xml")
 
     # ==================== MAP DEFINTION VIA NODES AND EDGES ====================
- 
-    nodes_raw, edges_raw, sources = loadPyConfig(IMPORT_PATH)
+    try:
+        nodes_raw, edges_raw, sources = loadPyConfig(IMPORT_PATH)
+    except Exception as e:
+        print(f"{Fore.RED}Error loading configuration file {onamepy}:{Style.RESET_ALL}\n{e}")
+        return
     g = Graph()
     g.addRawNodes(nodes_raw)
     g.addRawEdges(edges_raw)
