@@ -47,7 +47,8 @@ DEF_MIN_RTLEN = 10
 DEF_MAX_RTLEN = 20
 DEF_VNUM = 100
 DEF_TDEV_PROP = 0.1
-DEF_ONAMEPY = "gcfg.py"
+DEF_CFGNAMEPY = "gcfg.py"
+DEF_ONAME = None
 
 
 # ==================== MAIN ====================
@@ -59,19 +60,25 @@ DEF_ONAMEPY = "gcfg.py"
 @click.option('--maxrtlen', default=DEF_MAX_RTLEN, help=f'Maximum route length in number of edges (default: {DEF_MAX_RTLEN})')
 @click.option('--vnum', default=DEF_VNUM, help=f'Number of vehicles to generate (default: {DEF_VNUM})')
 @click.option('--tdevp', default=DEF_TDEV_PROP, help=f'Time deviation as proportion of time horizon (default: {DEF_TDEV_PROP})')
-@click.option('--oname', default=DEF_ONAMEPY, help=f'Name of the python configuration file in the generator folder (default: {DEF_ONAMEPY})')
+@click.option('--cfg', default=DEF_CFGNAMEPY, help=f'Name of the python configuration file in the generator folder (default: {DEF_CFGNAMEPY})')
+@click.option('--oname',default=DEF_ONAME, help='Name of the output .rou.xml file (default: same as generator name)')
 
-def main(gname,time,nroutes,minrtlen,maxrtlen,vnum,tdevp,oname:str):
-    onamepy = oname if oname.endswith('.py') else (oname+'.py' if oname != '' else DEF_ONAMEPY)
+def main(gname,time,nroutes,minrtlen,maxrtlen,vnum,tdevp,cfg:str,oname):
+    cfgnamepy = cfg if cfg.endswith('.py') else (cfg+'.py' if cfg != '' else DEF_CFGNAMEPY)
+    if oname is not None and oname != '':
+        oname_rxml = oname if oname.endswith('.rou.xml') else oname+'.rou.xml'
+    else:
+        oname_rxml = f"{gname}.rou.xml"
+    
     FOLDER_PATH = path.join(path.dirname(__file__),"generated",gname)
-    IMPORT_PATH = path.join(FOLDER_PATH,onamepy)
-    OUTPUT_FILE = path.join(FOLDER_PATH,f"{gname}.rou.xml")
+    IMPORT_PATH = path.join(FOLDER_PATH,cfgnamepy)
+    OUTPUT_FILE = path.join(FOLDER_PATH,oname_rxml)
 
     # ==================== MAP DEFINTION VIA NODES AND EDGES ====================
     try:
         nodes_raw, edges_raw, sources = loadPyConfig(IMPORT_PATH)
     except Exception as e:
-        print(f"{Fore.RED}Error loading configuration file {onamepy}:{Style.RESET_ALL}\n{e}")
+        print(f"{Fore.RED}Error loading configuration file {cfgnamepy}:{Style.RESET_ALL}\n{e}")
         return
     g = Graph()
     g.addRawNodes(nodes_raw)
