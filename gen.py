@@ -44,6 +44,7 @@ DEF_MIN_RTLEN = 10
 DEF_MAX_RTLEN = 20
 DEF_VNUM = 100
 DEF_TDEV_PROP = 0.1
+DEF_ONAMEPY = "gcfg.py"
 
 
 # ==================== MAIN ====================
@@ -55,10 +56,12 @@ DEF_TDEV_PROP = 0.1
 @click.option('--maxrtlen', default=DEF_MAX_RTLEN, help=f'Maximum route length in number of edges (default: {DEF_MAX_RTLEN})')
 @click.option('--vnum', default=DEF_VNUM, help=f'Number of vehicles to generate (default: {DEF_VNUM})')
 @click.option('--tdevp', default=DEF_TDEV_PROP, help=f'Time deviation as proportion of time horizon (default: {DEF_TDEV_PROP})')
+@click.option('--oname', default=DEF_ONAMEPY, help=f'Name of the python configuration file in the generator folder (default: {DEF_ONAMEPY})')
 
-def main(gname,time,nroutes,minrtlen,maxrtlen,vnum,tdevp):
+def main(gname,time,nroutes,minrtlen,maxrtlen,vnum,tdevp,oname:str):
+    onamepy = oname if oname.endswith('.py') else (oname+'.py' if oname != '' else DEF_ONAMEPY)
     FOLDER_PATH = path.join(path.dirname(__file__),"generated",gname)
-    IMPORT_PATH = path.join(FOLDER_PATH,"rawGraph.py")
+    IMPORT_PATH = path.join(FOLDER_PATH,onamepy)
     OUTPUT_FILE = path.join(FOLDER_PATH,f"{gname}.rou.xml")
 
     # ==================== MAP DEFINTION VIA NODES AND EDGES ====================
