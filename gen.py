@@ -1,10 +1,6 @@
-from os import path
-from genrouter import Graph, IParams, VParams, VClass, Generator, loadPyConfig
-import click
+from genrouter import IParams, VParams, VClass, getConsole
 import colorama
-from colorama import Fore, Style
 colorama.init(autoreset=True)
-
 
 # ==================== GENERATOR PROBABILITY DICTIONARIES ====================
 
@@ -38,68 +34,13 @@ probabilistic_mod_multipliers={
     "DISTRACTED_DRIVER": {"p":0.1, "modifications":{"speed_factor":0.9, "speed_dev":1.5, "min_gap_m":0.5, "emergency_decel":0.8}}
 }
 
-# ==================== FINAL GENERATION PARAMETERS ====================
 
-# default generation params
-DEF_TIME_HORIZON_S = 200  # seconds
-DEF_N_ROUTES = 10
-DEF_MIN_RTLEN = 10
-DEF_MAX_RTLEN = 20
-DEF_VNUM = 100
-DEF_TDEV_PROP = 0.1
-DEF_CFGNAMEPY = "gcfg.py"
-DEF_ONAME = None
-
-
-# ==================== MAIN ====================
-@click.command()
-@click.option('--gname', help='Name of the generator (also the folder name in /generated/)', required=True)
-@click.option('--time', default=DEF_TIME_HORIZON_S, help=f'Time horizon in seconds (default: {DEF_TIME_HORIZON_S}s)')
-@click.option('--nroutes', default=DEF_N_ROUTES, help=f'Number of routes to generate (default: {DEF_N_ROUTES})')
-@click.option('--minrtlen', default=DEF_MIN_RTLEN, help=f'Minimum route length in number of edges (default: {DEF_MIN_RTLEN})')
-@click.option('--maxrtlen', default=DEF_MAX_RTLEN, help=f'Maximum route length in number of edges (default: {DEF_MAX_RTLEN})')
-@click.option('--vnum', default=DEF_VNUM, help=f'Number of vehicles to generate (default: {DEF_VNUM})')
-@click.option('--tdevp', default=DEF_TDEV_PROP, help=f'Time deviation as proportion of time horizon (default: {DEF_TDEV_PROP})')
-@click.option('--cfg', default=DEF_CFGNAMEPY, help=f'Name of the python configuration file in the generator folder (default: {DEF_CFGNAMEPY})')
-@click.option('--oname',default=DEF_ONAME, help='Name of the output .rou.xml file (default: same as generator name)')
-
-def main(gname,time,nroutes,minrtlen,maxrtlen,vnum,tdevp,cfg:str,oname):
-    cfgnamepy = cfg if cfg.endswith('.py') else (cfg+'.py' if cfg != '' else DEF_CFGNAMEPY)
-    if oname is not None and oname != '':
-        oname_rxml = oname if oname.endswith('.rou.xml') else oname+'.rou.xml'
-    else:
-        oname_rxml = f"{gname}.rou.xml"
-    
-    FOLDER_PATH = path.join(path.dirname(__file__),"generated",gname)
-    IMPORT_PATH = path.join(FOLDER_PATH,cfgnamepy)
-    OUTPUT_FILE = path.join(FOLDER_PATH,oname_rxml)
-
-    # ==================== MAP DEFINTION VIA NODES AND EDGES ====================
+def main():
+    console = getConsole(ip_probabs,vp_probabs,vcl_params,probabilistic_mod_multipliers)
     try:
-        nodes_raw, edges_raw, sources = loadPyConfig(IMPORT_PATH)
+        console()
     except Exception as e:
-        print(f"{Fore.RED}Error loading configuration file {cfgnamepy}:{Style.RESET_ALL}\n{e}")
-        return
-    g = Graph()
-    g.addRawNodes(nodes_raw)
-    g.addRawEdges(edges_raw)
-    generator = Generator(
-        OUTPUT_FILE=OUTPUT_FILE,
-        TIME_HORIZON_S=time,
-        N_ROUTES=nroutes,
-        MIN_RTLEN=minrtlen,
-        MAX_RTLEN=maxrtlen,
-        VNUM=vnum,
-        TDEV_PROP=tdevp,
-        ip_probabs=ip_probabs,
-        vp_probabs=vp_probabs,
-        vcl_params=vcl_params,
-        graph=g,
-        probabilistic_mod_multipliers=probabilistic_mod_multipliers,
-        source_node_ids=sources
-    )
-
-    generator.generate()
+        print(f"{e}")
 
 if __name__ == "__main__":
     main()
