@@ -12,7 +12,8 @@ ObstacleVtype = _VT(
         emergency_decel=0.1,
         length_m=3.0,
         max_speed=0.1,
-        kmh=False
+        kmh=False,
+        gui_shape="bus"
     ),
     ip=_IP(
         min_gap_m=0.0,
@@ -21,7 +22,6 @@ ObstacleVtype = _VT(
     ),
     additional_attributes={
         "color":"1,0,0",
-        "guiShape":"bus",
         "width":"1.0"
     }
 )
