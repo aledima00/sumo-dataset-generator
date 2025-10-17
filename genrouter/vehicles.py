@@ -28,7 +28,7 @@ class VType:
         self.v_class = v_class
         self.additional_attributes = additional_attributes if additional_attributes is not None else dict()
     def xml(self):
-        x = f'<vType id="{self.id}" accel="{self.vp.accel}" decel="{self.vp.decel}" emergencyDecel="{self.vp.emergency_decel}" length="{self.vp.length}" maxSpeed="{self.vp.max_speed}" minGap="{self.ip.min_gap}" speedFactor="{self.ip.speed_factor}" speedDev="{self.ip.speed_dev}" vClass="{self.v_class}" guiShape="{self.vp.gui_shape}"'
+        x = f'<vType id="{self.id}" accel="{self.vp.accel:.4e}" decel="{self.vp.decel:.4e}" emergencyDecel="{self.vp.emergency_decel:.4e}" length="{self.vp.length:.4e}" maxSpeed="{self.vp.max_speed:.4e}" minGap="{self.ip.min_gap:.4e}" speedFactor="{self.ip.speed_factor:.4e}" speedDev="{self.ip.speed_dev:.4e}" vClass="{self.v_class}" guiShape="{self.vp.gui_shape}"'
         for k,v in self.additional_attributes.items():
             x += f' {k}="{v}"'
         x += '/>'

@@ -84,6 +84,7 @@ class Generator:
 
         routes = [self.graph.randomRoute(f"RT{i}",min_steps=self.MIN_RTLEN,max_steps=self.MAX_RTLEN,source_node_ids=self.source_node_ids) for i in range(self.N_ROUTES)]
         dts = [max(_RND.gauss(mu=self.TIME_HORIZON_S*i/self.VNUM,sigma=self.TDEV),0.0) for i in range(self.VNUM+self.obstacle_num)]
+        _RND.shuffle(dts)
         used_vtypes = set()
         vehicles:list[_VH] = []
         for i in range(self.VNUM):
