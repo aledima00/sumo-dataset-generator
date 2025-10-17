@@ -32,7 +32,8 @@ def getConsole(ip_probabs:dict,vp_probabs:dict,vcl_params:dict,probabilistic_mod
     @click.option('--tdevp', default=DEF_TDEV_PROP, help=f'Time deviation as proportion of time horizon (default: {DEF_TDEV_PROP})')
     @click.option('--cfg', default=DEF_CFGNAMEPY, help=f'Name of the python configuration file in the generator folder (default: {DEF_CFGNAMEPY})')
     @click.option('--oname',default=DEF_ONAME, help='Name of the output .rou.xml file (default: same as generator name)')
-    def console(gname,time,nroutes,minrtlen,maxrtlen,vnum,tdevp,cfg:str,oname):
+    @click.option('--obstacles',default=0,help='Number of obstacle vehicles to generate (default: 0)')
+    def console(gname,time,nroutes,minrtlen,maxrtlen,vnum,tdevp,cfg:str,oname,obstacles:int):
         cfgnamepy = cfg if cfg.endswith('.py') else (cfg+'.py' if cfg != '' else DEF_CFGNAMEPY)
         if oname is not None and oname != '':
             oname_rxml = oname if oname.endswith('.rou.xml') else oname+'.rou.xml'
@@ -64,10 +65,11 @@ def getConsole(ip_probabs:dict,vp_probabs:dict,vcl_params:dict,probabilistic_mod
             vcl_params=vcl_params,
             graph=g,
             probabilistic_mod_multipliers=probabilistic_mod_multipliers,
-            source_node_ids=sources
+            source_node_ids=sources,
+            obstacle_num=obstacles
         )
 
-        generator.generate()
+        gen_out = generator.generate()
+        click.echo(f"{Fore.GREEN}Generation completed successfully!{Style.RESET_ALL}"+"".join([f"\n   {Fore.YELLOW}- {k}{Fore.RESET}: {v}" for k,v in gen_out.items()]))
 
     return console
-

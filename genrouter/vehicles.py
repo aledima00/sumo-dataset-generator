@@ -12,21 +12,26 @@ class IParams:
         self.speed_dev = speed_dev
         self.min_gap = min_gap_m
 class VParams:
-    def __init__(self,accel=2.6, decel=4.5, emergency_decel=9.0, length_m=5.0, max_speed_kmh=180.0):
+    def __init__(self,accel=2.6, decel=4.5, emergency_decel=9.0, length_m=5.0, max_speed=180.0,*,kmh=True):
         self.accel = accel
         self.decel = decel
         self.emergency_decel = emergency_decel
         self.length = length_m
-        self.max_speed = max_speed_kmh/3.6
+        self.max_speed = max_speed if not kmh else max_speed / 3.6  # convert km/h to m/s
 
 class VType:
-    def __init__(self,id,*,vp:VParams=VParams(), ip:IParams=IParams(), v_class:VClass=VClass.PASSENGER):
+    def __init__(self,id,*,vp:VParams=VParams(), ip:IParams=IParams(), v_class:VClass=VClass.PASSENGER.value,additional_attributes:dict=None):
         self.id = id
         self.vp = vp
         self.ip = ip
         self.v_class = v_class
+        self.additional_attributes = additional_attributes if additional_attributes is not None else dict()
     def xml(self):
-        return f'<vType id="{self.id}" accel="{self.vp.accel}" decel="{self.vp.decel}" emergencyDecel="{self.vp.emergency_decel}" length="{self.vp.length}" maxSpeed="{self.vp.max_speed}" minGap="{self.ip.min_gap}" speedFactor="{self.ip.speed_factor}" speedDev="{self.ip.speed_dev}" vClass="{self.v_class}"/>'
+        x = f'<vType id="{self.id}" accel="{self.vp.accel}" decel="{self.vp.decel}" emergencyDecel="{self.vp.emergency_decel}" length="{self.vp.length}" maxSpeed="{self.vp.max_speed}" minGap="{self.ip.min_gap}" speedFactor="{self.ip.speed_factor}" speedDev="{self.ip.speed_dev}" vClass="{self.v_class}"'
+        for k,v in self.additional_attributes.items():
+            x += f' {k}="{v}"'
+        x += '/>'
+        return x
     def __str__(self):
         return str(self.id)
     def __repr__(self):
