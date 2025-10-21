@@ -6,7 +6,7 @@ from enum import Enum as _EN
 from pathlib import Path as _Path
 from .labels import LabelsEnum as _LE, MultiLabel as _MLB
 from .pack import Frame as _Frame, StaticPackAnalyzer as _SPA
-from .vehicle import _Vehicle as _Vehicle
+from .vehicle import Vehicle as _Vehicle
 from colorama import Fore as _Fore, Style as _Style
 import re as _re
 import shutil as _sh
@@ -42,6 +42,9 @@ class TraciController:
             "--no-warnings", "false" if self.warnings else "true",
             "--start"
         ])
+        laneIds = _traci.lane.getIDList()
+        max_speed_per_lane = {lid: _traci.lane.getMaxSpeed(lid) for lid in laneIds}
+
         for pn in range(self.total_packs):
             pack: list[_Frame] = []
             lb = _MLB()
@@ -57,14 +60,16 @@ class TraciController:
                 # frame creation and push
                 frame = _Frame()
                 for vid in _traci.vehicle.getIDList(): 
+                    vobj = _Vehicle.from_traci(vid)
+                    vobj.lane_id = _traci.vehicle.getLaneID(vid) 
                     if str(vid).startswith("OBS_"):
-                        frame.obstacles[vid] = _Vehicle.from_traci(vid)
+                        frame.obstacles[vid] = vobj
                     else:
-                        frame.vehicles[vid] = _Vehicle.from_traci(vid)
+                        frame.vehicles[vid] = vobj
 
                 pack.append(frame)
         
-            sp_analyzer = _SPA(pack, lb)
+            sp_analyzer = _SPA(pack, lb,max_speed_per_lane=max_speed_per_lane)
             lb = sp_analyzer.analyze()
             self.plabels.append(lb)
         
