@@ -61,7 +61,6 @@ class TraciController:
                 frame = _Frame()
                 for vid in _traci.vehicle.getIDList(): 
                     vobj = _Vehicle.from_traci(vid)
-                    vobj.lane_id = _traci.vehicle.getLaneID(vid) 
                     if str(vid).startswith("OBS_"):
                         frame.obstacles[vid] = vobj
                     else:

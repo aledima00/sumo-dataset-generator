@@ -7,7 +7,6 @@ class Vehicle:
     lane_id:str = None
     speed:float = 0.0
     acceleration:float = 0.0
-    lane_id:str = None
 
 
     @classmethod
