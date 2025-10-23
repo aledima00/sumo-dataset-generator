@@ -11,42 +11,32 @@ from .sumocfg import SumoCfg as _SCFG
 # ==================== FINAL GENERATION PARAMETERS ====================
 
 # default generation params
-DEF_TIME_HORIZON_S = 200  # seconds
 DEF_N_ROUTES = 10
 DEF_MIN_RTLEN = 10
 DEF_MAX_RTLEN = 20
 DEF_VNUM = 100
 DEF_TDEV_PROP = 0.1
-DEF_ONAME = 'cars.rou.xml'
 DEF_OBSTACLES = 0
 
 
 # ==================== MAIN ====================
 
 @_dc
-class Options:
-    time: int = DEF_TIME_HORIZON_S
+class GenOptions:
     nroutes: int = DEF_N_ROUTES
     minrtlen: int = DEF_MIN_RTLEN
     maxrtlen: int = DEF_MAX_RTLEN
     vnum: int = DEF_VNUM
     tdevp: float = DEF_TDEV_PROP
-    oname: str = DEF_ONAME
     obstacles: int = DEF_OBSTACLES
 
-    def __init__(self,**kwargs):
-        for k,v in kwargs.items():
-            setattr(self,k,v)
-        if not self.oname.endswith('.rou.xml'):
-            self.oname = self.oname + '.rou.xml'
-
     @staticmethod
-    def fromYaml(yaml_path:_Path)->'Options':
+    def fromYaml(yaml_path:_Path)->'GenOptions':
         if (not yaml_path.exists()) or (not yaml_path.is_file()):
-            return Options()
+            return GenOptions()
         with open(yaml_path,'r') as yf:
             options_dict:dict = yaml.safe_load(yf)
-        return Options(**options_dict)
+        return GenOptions(**options_dict)
     
     def dump(self,yaml_path:_Path):
         options_dict = _asdict(self)
@@ -58,34 +48,51 @@ class Options:
             if v is not None and (type(v) is not str or v != ''):
                 setattr(self,k,v)
 
+def checkRequiredParam(param):
+    if param is None:
+        raise ValueError(f"Required parameter '{param}' not specified nor present in SUMO config file!")
     
 def getConsole(ip_probabs:dict,vp_probabs:dict,vcl_params:dict,probabilistic_mod_multipliers:dict):
 
     @click.command()
     @click.argument('sumocfg_path', required=True, type=click.Path(exists=True, dir_okay=False), nargs=1)
-    @click.option('--time', type=int, default=None, help=f'Time horizon in seconds (default: {DEF_TIME_HORIZON_S}s)')
+    @click.option('--time', type=int, default=None, help=f'Time horizon in seconds (default: from SUMO config file). If specified, will override the one in the SUMO config file.')
+    @click.option('--route-filename',type=str, default=None, help=f'Output route filename (default: from SUMO config file). If specified, will override the one in the SUMO config file.')
+    @click.option('--net-filename',type=str, default=None, help=f'Input network filename (default: from SUMO config file). If specified, will override the one in the SUMO config file.')
     @click.option('--nroutes',type=int, default=None, help=f'Number of routes to generate (default: {DEF_N_ROUTES})')
     @click.option('--minrtlen', type=int, default=None, help=f'Minimum route length in number of edges (default: {DEF_MIN_RTLEN})')
     @click.option('--maxrtlen', type=int, default=None, help=f'Maximum route length in number of edges (default: {DEF_MAX_RTLEN})')
     @click.option('--vnum', type=int, default=None, help=f'Number of vehicles to generate (default: {DEF_VNUM})')
     @click.option('--tdevp', type=float, default=None, help=f'Time deviation as proportion of time horizon (default: {DEF_TDEV_PROP})')
-    @click.option('--oname',type=str, default=None, help='Name of the output .rou.xml file (default: same as generator name)')
     @click.option('--obstacles',type=int, default=None,help='Number of obstacle vehicles to generate (default: 0)')
     @click.option('--save-gparams',is_flag=True,help='If set, saves the generation parameters to a gparams.yaml file in the cwd.')
-    def console(sumocfg_path,time,nroutes,minrtlen,maxrtlen,vnum,tdevp,oname,obstacles:int,save_gparams:bool):
+    def console(sumocfg_path,time,nroutes,minrtlen,maxrtlen,vnum,tdevp,route_filename,net_filename,obstacles:int,save_gparams:bool):
 
         scfg = _SCFG(_Path(sumocfg_path))
+        if time is not None:
+            scfg.duration_s = time
+        else: 
+            checkRequiredParam(scfg.duration_s)
+        if route_filename is not None:
+            scfg.routes_file = _Path(route_filename).resolve()
+        else:
+            checkRequiredParam(scfg.routes_file)
+        if net_filename is not None:
+            scfg.net_file = _Path(net_filename).resolve()
+        else:
+            checkRequiredParam(scfg.net_file)
+
+        scfg.save()
+        
         yf = _Path(os.getcwd()).resolve() / "gparams.yaml"
 
-        options = Options.fromYaml(yf)
+        options = GenOptions.fromYaml(yf)
         options.overwriteWith(
-            time=time,
             nroutes=nroutes,
             minrtlen=minrtlen,
             maxrtlen=maxrtlen,
             vnum=vnum,
             tdevp=tdevp,
-            oname=oname,
             obstacles=obstacles
         )
         if save_gparams:
@@ -93,7 +100,7 @@ def getConsole(ip_probabs:dict,vp_probabs:dict,vcl_params:dict,probabilistic_mod
         g = _GR(netfile=scfg.net_file)
         generator = Generator(
             OUTPUT_FILE=str(scfg.routes_file),
-            TIME_HORIZON_S=options.time,
+            TIME_HORIZON_S=scfg.duration_s,
             N_ROUTES=options.nroutes,
             MIN_RTLEN=options.minrtlen,
             MAX_RTLEN=options.maxrtlen,
@@ -111,5 +118,4 @@ def getConsole(ip_probabs:dict,vp_probabs:dict,vcl_params:dict,probabilistic_mod
         click.echo(f"{Fore.GREEN}Generation completed successfully!{Style.RESET_ALL}"+"".join([f"\n   {Fore.YELLOW}- {k}{Fore.RESET}: {v}" for k,v in gen_out.items()]))
         if save_gparams:
             click.echo(f"{Fore.CYAN}[generation parameters saved to '{yf.parts[-1]}']{Style.RESET_ALL}")
-
     return console

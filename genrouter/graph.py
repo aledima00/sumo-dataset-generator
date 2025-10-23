@@ -82,8 +82,6 @@ class GraphRepresentation:
             outgoing_connections: list[_Conn] = [c for sublist in e.getOutgoing().values() for c in sublist]
             incoming_connections: list[_Conn] = [c for sublist in e.getIncoming().values() for c in sublist]
 
-            print("outgoing:", outgoing_connections)
-
             for conn in outgoing_connections:
                 from_edge_id = e2eid(e)
                 to_edge_id = e2eid(conn.getTo())
