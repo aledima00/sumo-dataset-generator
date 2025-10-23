@@ -5,11 +5,11 @@ colorama.init(autoreset=True)
 # ==================== GENERATOR PROBABILITY DICTIONARIES ====================
 
 ip_probabs = {
-    "NORMAL": (0.5,IParams(speed_factor=1.0, speed_dev=0.1, min_gap_m=2.5)),
-    "CAUTIOUS": (0.2,IParams(speed_factor=0.8, speed_dev=0.05, min_gap_m=3.5)),
-    "AGGRESSIVE": (0.2,IParams(speed_factor=1.2, speed_dev=0.15, min_gap_m=2.0)),
-    "RECKLESS": (0.05,IParams(speed_factor=1.5, speed_dev=0.2, min_gap_m=1.5)),
-    "AUTHORIZED": (0.05,IParams(speed_factor=2.0, speed_dev=0.25, min_gap_m=0.5))
+    "NORMAL": (0.5,IParams(speedFactor=1.0, speedDev=0.1, minGap=2.5)),
+    "CAUTIOUS": (0.2,IParams(speedFactor=0.8, speedDev=0.05, minGap=3.5)),
+    "AGGRESSIVE": (0.2,IParams(speedFactor=1.2, speedDev=0.15, minGap=2.0)),
+    "RECKLESS": (0.05,IParams(speedFactor=1.5, speedDev=0.2, minGap=1.5)),
+    "AUTHORIZED": (0.05,IParams(speedFactor=2.0, speedDev=0.25, minGap=0.5))
 }
 
 vp_probabs = {
@@ -31,7 +31,7 @@ probabilistic_mod_multipliers={
     "DAMAGED_BRAKES": {"p":0.2, "modifications":{"decel":0.4, "emergency_decel":0.2}},
     "FLAT_TIRE": {"p":0.07, "modifications":{"max_speed":0.7}},
     "HEAVY_LOAD": {"p":0.1, "modifications":{"accel":0.8, "max_speed":0.9}},
-    "DISTRACTED_DRIVER": {"p":0.1, "modifications":{"speed_factor":0.9, "speed_dev":1.5, "min_gap_m":0.5, "emergency_decel":0.8}}
+    "DISTRACTED_DRIVER": {"p":0.1, "modifications":{"speedFactor":0.9, "speedDev":1.5, "minGap":0.5, "emergency_decel":0.8}}
 }
 
 
