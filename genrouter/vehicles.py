@@ -1,4 +1,6 @@
 from enum import Enum as _EN
+from dataclasses import dataclass as _dc
+
 class VClass(_EN):
     PASSENGER = "passenger"
     EMERGENCY = "emergency"
@@ -6,31 +8,56 @@ class VClass(_EN):
     ARMY = "army"
     IGNORING = "ignoring"    
 
+@_dc
 class IParams:
-    def __init__(self,speed_factor=1.0, speed_dev=0.1, min_gap_m=2.5):
-        self.speed_factor = speed_factor
-        self.speed_dev = speed_dev
-        self.min_gap = min_gap_m
+    speedFactor:float = 1.0
+    speedDev:float = 0.1
+    minGap:float = 2.5
+
+    # lane change parameters - keep default for majority of cases
+    lcAssertive:float=0.6
+    lcSpeedGain:float=0.5
+    lcStrategic:float=1.0
+    lcLookaheadLeft:float=2.0
+    lcLookaheadRight:float=1.0
+    lcKeepRight:float=0.7
+    lcCooperative:float=0.3
+    lcMinGap:float=2.5
+    lcMinGapLat:float=0.5
+    lcMinGapSpeed:float=5.0
+    lcMaxSpeedDeviation:float=5.0
+    lcReactionTime:float=0.5
+
+@_dc
 class VParams:
-    def __init__(self,accel=2.6, decel=4.5, emergency_decel=9.0, length_m=5.0, max_speed=180.0,*,kmh=True,gui_shape:str="passenger"):
-        self.accel = accel
-        self.decel = decel
-        self.emergency_decel = emergency_decel
-        self.length = length_m
-        self.max_speed = max_speed if not kmh else max_speed / 3.6  # convert km/h to m/s
-        self.gui_shape = gui_shape
+    accel:float = 2.6
+    decel:float = 4.5
+    emergency_decel:float = 9.0
+    length_m:float = 5.0
+    max_speed:float = 180.0 
+    kmh:bool = True
+    gui_shape:str = "passenger"
+
+    def __post_init__(self):
+        if self.kmh:
+            self.max_speed = self.max_speed / 3.6  # convert km/h to m/s
+        
+    
 
 class VType:
-    def __init__(self,id,*,vp:VParams=VParams(), ip:IParams=IParams(), v_class:VClass=VClass.PASSENGER.value,additional_attributes:dict=None):
+    def __init__(self,id,*,vp:VParams=VParams(), ip:IParams=IParams(), v_class:VClass=VClass.PASSENGER.value, additional_attributes:dict=None):
         self.id = id
         self.vp = vp
         self.ip = ip
         self.v_class = v_class
         self.additional_attributes = additional_attributes if additional_attributes is not None else dict()
     def xml(self):
-        x = f'<vType id="{self.id}" accel="{self.vp.accel:.4e}" decel="{self.vp.decel:.4e}" emergencyDecel="{self.vp.emergency_decel:.4e}" length="{self.vp.length:.4e}" maxSpeed="{self.vp.max_speed:.4e}" minGap="{self.ip.min_gap:.4e}" speedFactor="{self.ip.speed_factor:.4e}" speedDev="{self.ip.speed_dev:.4e}" vClass="{self.v_class}" guiShape="{self.vp.gui_shape}"'
+        x = f'<vType id="{self.id}" accel="{self.vp.accel:.4e}" decel="{self.vp.decel:.4e}" emergencyDecel="{self.vp.emergency_decel:.4e}" length="{self.vp.length_m:.4e}" maxSpeed="{self.vp.max_speed:.4e}" vClass="{self.v_class}" guiShape="{self.vp.gui_shape}"'
+        for k,v in self.ip.__dict__.items():
+            x += f' {k}="{v:.4e}"'
         for k,v in self.additional_attributes.items():
             x += f' {k}="{v}"'
+        
         x += '/>'
         return x
     def __str__(self):

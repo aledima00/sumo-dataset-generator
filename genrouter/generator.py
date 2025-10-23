@@ -16,9 +16,9 @@ ObstacleVtype = _VT(
         gui_shape="bus"
     ),
     ip=_IP(
-        min_gap_m=0.0,
-        speed_factor=0.0,
-        speed_dev=0.0
+        minGap=0.0,
+        speedFactor=0.0,
+        speedDev=0.0
     ),
     additional_attributes={
         "color":"1,0,0",
