@@ -1,8 +1,7 @@
-from .graph import LocDirNode as Node, Edge, Graph
+from .graph import GraphRepresentation, RouteRepresentation, ConnectionRepresentation, JunctionRepresentation
 from .vehicles import VClass, VParams, IParams, VType, Vehicle
 from .generator import Generator
-from .loadConfig import loadPyConfig
 from .console import getConsole
 
 
-__all__ = ['Node', 'Edge', 'Graph', 'VClass', 'IParams', 'VParams', 'VType', 'Vehicle', 'Generator', 'loadPyConfig', 'getConsole']
+__all__ = ['GraphRepresentation', 'RouteRepresentation', 'ConnectionRepresentation', 'JunctionRepresentation', 'VClass', 'IParams', 'VParams', 'VType', 'Vehicle', 'Generator', 'loadPyConfig', 'getConsole']

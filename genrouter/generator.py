@@ -1,5 +1,5 @@
 #from generated.roundabout import rawcfg
-from .graph import Graph as _G
+from .graph import GraphRepresentation as _GR
 from .vehicles import VType as _VT, Vehicle as _VH, VParams as _VP, IParams as _IP, VClass as _VC
 import random as _RND
 from pathlib import Path
@@ -27,7 +27,7 @@ ObstacleVtype = _VT(
 )
 
 class Generator:
-    def __init__(self,*,OUTPUT_FILE:str,TIME_HORIZON_S:int,N_ROUTES:int,MIN_RTLEN:int,MAX_RTLEN:int,VNUM:int,TDEV_PROP:float,ip_probabs:dict,vp_probabs:dict,vcl_params:dict,graph:_G,probabilistic_mod_multipliers:dict={},source_node_ids:list[str]=None,obstacle_num:int=0):
+    def __init__(self,*,OUTPUT_FILE:str,TIME_HORIZON_S:int,N_ROUTES:int,MIN_RTLEN:int,MAX_RTLEN:int,VNUM:int,TDEV_PROP:float,ip_probabs:dict,vp_probabs:dict,vcl_params:dict,graph:_GR,probabilistic_mod_multipliers:dict={},source_edge_ids:list[str]=None,obstacle_num:int=0):
         self.OUTPUT_FILE = OUTPUT_FILE
         self.TIME_HORIZON_S = TIME_HORIZON_S
         self.N_ROUTES = N_ROUTES
@@ -41,7 +41,7 @@ class Generator:
         self.vtypes = Generator.__gen_vtypes(ip_probabs,vp_probabs,vcl_params)
         self.graph = graph
         self.probabilistic_mod_multipliers = probabilistic_mod_multipliers
-        self.source_node_ids = source_node_ids
+        self.source_edge_ids = source_edge_ids
         self.obstacle_num = obstacle_num
     
     @staticmethod
@@ -82,7 +82,7 @@ class Generator:
     
     def generate(self):
 
-        routes = [self.graph.randomRoute(f"RT{i}",min_steps=self.MIN_RTLEN,max_steps=self.MAX_RTLEN,source_node_ids=self.source_node_ids) for i in range(self.N_ROUTES)]
+        routes = [self.graph.randomRoute(route_id=f"RT{i}",min_steps=self.MIN_RTLEN,max_steps=self.MAX_RTLEN,source_edge_ids=self.source_edge_ids) for i in range(self.N_ROUTES)]
         dts = [max(_RND.gauss(mu=self.TIME_HORIZON_S*i/self.VNUM,sigma=self.TDEV),0.0) for i in range(self.VNUM+self.obstacle_num)]
         _RND.shuffle(dts)
         used_vtypes = set()

@@ -1,128 +1,133 @@
-import random as _RND
+import sumolib as _sumolib
+from sumolib.net import Net as _Net
+from sumolib.net.edge import Edge as _Edge
+from sumolib.net.node import Node as _Node
+from sumolib.net.connection import Connection as _Conn
+import click as _click
+from pathlib import Path as _Path
+from dataclasses import dataclass as _dc, field as _field
+import random
+
+def e2eid(edge:_Edge)->str:
+    return edge.getID()
+def n2nid(node:_Node)->str:
+    return node.getID()
 
 
-class LocDirNode:
-    __id:str
-    __location:str
-    def __init__(self,id:str,location:str):
-        self.__id = id
-        self.__location = location
-    def id(self)->str:
-        return self.__id
-    def location(self)->str:
-        return self.__location
-    def __str__(self):
-        return f"{self.__id}(@[{self.__location}])"
-    def __repr__(self):
-        return str(self)
-    def __eq__(self, other:'LocDirNode')->bool:
-        return self.__id == other.__id
-    def __hash__(self):
-        return hash(self.__id) # assuming unique ids  
-        
-class Edge:
-    __from:LocDirNode
-    __to:LocDirNode
-    def __init__(self,from_node:LocDirNode,to_node:LocDirNode):
-        self.__from = from_node
-        self.__to = to_node
-    def from_node(self)->LocDirNode:
-        return self.__from
-    def to_node(self)->LocDirNode:
-        return self.__to
-    def jname(self)->str:
-        return f"{self.__from.location()}_to_{self.__to.location()}"
-    def __str__(self):
-        return self.jname()
-    def __repr__(self):
-        return self.jname()
-    def __eq__(self, other:'Edge')->bool:
-        return self.__from == other.__from and self.__to == other.__to
-    def __hash__(self):
-        return hash((self.__from,self.__to))
+@_dc(frozen=True)
+class ConnectionRepresentation:
+    from_edge_id:str
+    to_edge_id:str
+    via_node_id:str
 
-class Graph:
+    def isFromEdge(self,edge_id:str)->bool:
+        return self.from_edge_id == edge_id
+    def isToEdge(self,edge_id:str)->bool:
+        return self.to_edge_id == edge_id
 
-    class Route:
-        path: list[Edge]
-        id: str
-        src_node: LocDirNode
-        def __init__(self,*,id:str,src_node:LocDirNode,graph:'Graph'):
-            self.src_node = src_node
-            self.id = id
-            self.path = []
-            self.graph = graph
-        def length(self):
-            return len(self.path)
-        def randAddStep(self):
-            current_node = self.path[-1].to_node() if self.length()>0 else self.src_node
-            edges = self.graph.edgesFrom(current_node)
-            if len(edges)==0:
-                return # TRUNCATE IF NO NEIGHBORS
-            next_edge = _RND.choice(list(edges))
-            self.path.append(next_edge)
-        def randExtend(self, steps:int):
-            for _ in range(steps):
-                self.randAddStep()
-        def xml(self):
-            totlen = self.length()
-            l = " ".join([e.jname() for e in self.path])
-            return f'<route id="{self.id}" edges="{l}"/>'
+@_dc
+class JunctionRepresentation:
+    node_id:str
+    connections:set[ConnectionRepresentation] = _field(default_factory=set)
+    def addConnection(self,from_edge_id:str,to_edge_id:str):
+        self.connections.add( ConnectionRepresentation(from_edge_id=from_edge_id, to_edge_id=to_edge_id,via_node_id=self.node_id) )
 
-    __nodes:set[LocDirNode]
-    __edges:set[Edge]
-    def __init__(self,*,nodes:set[LocDirNode]=None,edges:set[Edge]=None):
-        self.__nodes = nodes if nodes is not None else set()
-        self.__edges = edges if edges is not None else set()
-    def addRawNode(self,id:str,location:str):
-        node = LocDirNode(id,location)
-        if node not in self.__nodes:
-            self.__nodes.add(node)
-    def addRawEdge(self,from_id:str,to_id:str):
-        from_node = next((n for n in self.__nodes if n.id()==from_id),None)
-        to_node = next((n for n in self.__nodes if n.id()==to_id),None)
-        if from_node is None or to_node is None:
-            raise ValueError(f"Nodes with ids {from_id} and/or {to_id} not found in graph")
-        edge = Edge(from_node,to_node)
-        if edge not in self.__edges:
-            self.__edges.add(edge)
-    def addRawNodes(self,nodesLocDict:dict[str,set[str]]):
-        """
-        structure: {location1: {id1,id2,...}, location2: {id3,id4,...}, ...}
-        """
-        for loc,ids in nodesLocDict.items():
-            for id in ids:
-                self.addRawNode(id,loc)
-    def addRawEdges(self,edgesFromDict:dict[str,set[str]]):
-        """
-        structure: {from_id1: {to_id1,to_id2,...}, from_id2: {to_id3,to_id4,...}, ...}
-        """
-        for from_id,to_ids in edgesFromDict.items():
-            for to_id in to_ids:
-                self.addRawEdge(from_id,to_id)
+    def getByFromEdge(self,edge_id:str)->set[ConnectionRepresentation]:
+        return set( filter( lambda c: c.isFromEdge(edge_id), self.connections ))
+    def getByToEdge(self,edge_id:str)->set[ConnectionRepresentation]:
+        return set( filter( lambda c: c.isToEdge(edge_id), self.connections ))
 
-    def randomNode(self):
-        return _RND.choice(list(self.__nodes))
-    def nodes(self):
-        return self.__nodes
-    def edges(self):
-        return self.__edges
-    
-    def edgesFrom(self,node:LocDirNode):
-        return {e for e in self.__edges if e.from_node() == node}
-    
-    def randomRoute(self,id:str,*,min_steps=0,max_steps=None,source_node_ids:list=None):
-        steps = _RND.randint(min_steps, max_steps if max_steps is not None else min_steps)
-        n = None
-        if source_node_ids is not None:
-            n_id = _RND.choice(list(source_node_ids))
-            n = next((n for n in self.__nodes if n.id()==n_id),None)
-            if n is None:
-                raise ValueError(f"Source node with id {n_id} not found in graph")
+@_dc
+class RouteRepresentation:
+    id:str
+    edges:list[str]
+
+    def __init__(self,*,id:str,start_edge_id:str):
+        self.id = id
+        self.edges = [start_edge_id]
+
+    def xml(self)->str:
+        edge_str = ' '.join(self.edges)
+        return f'<route id="{self.id}" edges="{edge_str}"/>'
+
+
+class GraphRepresentation:
+    __edges:set[str]
+    __nodes:set[str]
+    __junctions:dict[str,JunctionRepresentation]
+
+    def __addJunction(self, via_node_id:str, from_edge_id:str, to_edge_id:str):
+        if via_node_id not in self.__junctions:
+            self.__junctions[via_node_id] = JunctionRepresentation(node_id=via_node_id)
+        self.__junctions[via_node_id].addConnection(from_edge_id=from_edge_id, to_edge_id=to_edge_id)
+
+    def __getToJunction(self,edge_id:str)->JunctionRepresentation|None:
+        for j in self.__junctions.values():
+            conns = j.getByFromEdge(edge_id)
+            if len(conns)>0:
+                return j
+        return None
+
+    def __init__(self,netfile:_Path):
+        net: _Net = _sumolib.net.readNet(str(netfile))
+        edges_raw: list[_Edge] = net.getEdges()
+        nodes_raw: list[_Node] = net.getNodes()
+
+        self.__edges = set(map(e2eid, edges_raw))
+        self.__nodes = set(map(n2nid, nodes_raw))
+        self.__junctions = dict()
+        for e in edges_raw:
+            
+            # e as start
+            outgoing_connections: list[_Conn] = [c for sublist in e.getOutgoing().values() for c in sublist]
+            incoming_connections: list[_Conn] = [c for sublist in e.getIncoming().values() for c in sublist]
+
+            print("outgoing:", outgoing_connections)
+
+            for conn in outgoing_connections:
+                from_edge_id = e2eid(e)
+                to_edge_id = e2eid(conn.getTo())
+                via_node_id = n2nid(e.getToNode())
+                self.__addJunction(via_node_id, from_edge_id, to_edge_id)
+
+            for conn in incoming_connections:
+                from_edge_id = e2eid(conn.getFrom())
+                to_edge_id = e2eid(e)
+                via_node_id = n2nid(e.getFromNode())
+                self.__addJunction(via_node_id, from_edge_id, to_edge_id)
+
+    def plot(self):
+        print("Edges:")
+        for e in self.__edges:
+            print(f" - {e}")
+        print("Nodes:")
+        for n in self.__nodes:
+            print(f" - {n}")
+        print("Junctions:")
+        for jn, j in self.__junctions.items():
+            print(f" - Junction {jn}:")
+            for c in j.connections:
+                print(f"      From edge {c.from_edge_id} to edge {c.to_edge_id} via node {c.via_node_id}")
+
+    def __rt_rand_step(self, rt:RouteRepresentation)->RouteRepresentation:
+        last_edge_id = rt.edges[-1]
+        to_junction = self.__getToJunction(last_edge_id)
+        if to_junction is None:
+            return rt # TRUNCATE IF NO JUNCTION
+        possible_connections = to_junction.getByFromEdge(last_edge_id)
+        next_connection = random.choice( list(possible_connections) )
+        rt.edges.append( next_connection.to_edge_id )
+
+    def randomRoute(self, route_id:str,*,min_steps:int=2, max_steps:int=10, source_edge_ids:set[str]=None)->RouteRepresentation:
+        if source_edge_ids is None or len(source_edge_ids)==0:
+            source_edge_id = random.choice( list(self.__edges) )
         else:
-            n = self.randomNode()
-        r = Graph.Route(id=id,src_node=n,graph=self)
-        r.randExtend(steps)
-        return r
-    
-__all__ = ["LocDirNode","Edge","Graph"]
+            source_edge_id = random.choice( list(source_edge_ids) )
+        rt = RouteRepresentation(id=route_id, start_edge_id=source_edge_id)
+        n_steps = random.randint(min_steps, max_steps)
+        for _ in range(n_steps):
+            self.__rt_rand_step(rt)
+        return rt
+
+
+__all__ = ["GraphRepresentation", "RouteRepresentation", "JunctionRepresentation", "ConnectionRepresentation"]

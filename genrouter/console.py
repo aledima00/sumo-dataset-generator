@@ -1,12 +1,12 @@
-from pathlib import Path
-from .graph import Graph
+from pathlib import Path as _Path
+from .graph import GraphRepresentation as _GR
 from .generator import Generator
-from .loadConfig import loadPyConfig
 import click
 from colorama import Fore, Style
 import yaml
 import os
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass as _dc, asdict as _asdict
+from .sumocfg import SumoCfg as _SCFG
 
 # ==================== FINAL GENERATION PARAMETERS ====================
 
@@ -17,53 +17,39 @@ DEF_MIN_RTLEN = 10
 DEF_MAX_RTLEN = 20
 DEF_VNUM = 100
 DEF_TDEV_PROP = 0.1
-DEF_CFGNAMEPY = "gcfg.py"
+DEF_ONAME = 'cars.rou.xml'
 DEF_OBSTACLES = 0
 
 
 # ==================== MAIN ====================
 
-@dataclass
+@_dc
 class Options:
-    gname: str
     time: int = DEF_TIME_HORIZON_S
     nroutes: int = DEF_N_ROUTES
     minrtlen: int = DEF_MIN_RTLEN
     maxrtlen: int = DEF_MAX_RTLEN
     vnum: int = DEF_VNUM
     tdevp: float = DEF_TDEV_PROP
-    cfg: str = DEF_CFGNAMEPY
-    oname: str = None
+    oname: str = DEF_ONAME
     obstacles: int = DEF_OBSTACLES
 
-    def __init__(self,gname,**kwargs):
-        self.gname = gname
+    def __init__(self,**kwargs):
         for k,v in kwargs.items():
             setattr(self,k,v)
-        if self.oname is None or self.oname == '':
-            self.oname = f"{gname}.rou.xml"
-        elif not self.oname.endswith('.rou.xml'):
+        if not self.oname.endswith('.rou.xml'):
             self.oname = self.oname + '.rou.xml'
-        if self.cfg == '':
-            self.cfg = DEF_CFGNAMEPY
-        elif not self.cfg.endswith('.py'):
-            self.cfg = self.cfg + '.py'
 
     @staticmethod
-    def fromYaml(yaml_path:Path,*,gname:str)->'Options':
+    def fromYaml(yaml_path:_Path)->'Options':
         if (not yaml_path.exists()) or (not yaml_path.is_file()):
-            return Options(gname)
+            return Options()
         with open(yaml_path,'r') as yf:
             options_dict:dict = yaml.safe_load(yf)
-            if options_dict.get('gname',None) is not None:
-                del options_dict['gname']
-        return Options(gname,**options_dict)
+        return Options(**options_dict)
     
-    def dump(self,yaml_path:Path):
-        options_dict = asdict(self)
-        del options_dict['gname']
-        if self.oname == f"{self.gname}.rou.xml":
-            del options_dict['oname']
+    def dump(self,yaml_path:_Path):
+        options_dict = _asdict(self)
         with open(yaml_path,'w') as yf:
             yaml.dump(options_dict,yf,default_flow_style=False,allow_unicode=True)
 
@@ -76,20 +62,22 @@ class Options:
 def getConsole(ip_probabs:dict,vp_probabs:dict,vcl_params:dict,probabilistic_mod_multipliers:dict):
 
     @click.command()
-    @click.argument('gname', required=True)
+    @click.argument('sumocfg_path', required=True, type=click.Path(exists=True, dir_okay=False), nargs=1)
     @click.option('--time', type=int, default=None, help=f'Time horizon in seconds (default: {DEF_TIME_HORIZON_S}s)')
     @click.option('--nroutes',type=int, default=None, help=f'Number of routes to generate (default: {DEF_N_ROUTES})')
     @click.option('--minrtlen', type=int, default=None, help=f'Minimum route length in number of edges (default: {DEF_MIN_RTLEN})')
     @click.option('--maxrtlen', type=int, default=None, help=f'Maximum route length in number of edges (default: {DEF_MAX_RTLEN})')
     @click.option('--vnum', type=int, default=None, help=f'Number of vehicles to generate (default: {DEF_VNUM})')
     @click.option('--tdevp', type=float, default=None, help=f'Time deviation as proportion of time horizon (default: {DEF_TDEV_PROP})')
-    @click.option('--cfg', type=str, default=None, help=f'Name of the python configuration file in the generator folder (default: {DEF_CFGNAMEPY})')
     @click.option('--oname',type=str, default=None, help='Name of the output .rou.xml file (default: same as generator name)')
     @click.option('--obstacles',type=int, default=None,help='Number of obstacle vehicles to generate (default: 0)')
     @click.option('--save-gparams',is_flag=True,help='If set, saves the generation parameters to a gparams.yaml file in the cwd.')
-    def console(gname,time,nroutes,minrtlen,maxrtlen,vnum,tdevp,cfg:str,oname,obstacles:int,save_gparams:bool):
-        yf = Path(os.getcwd()).resolve() / "gparams.yaml"
-        options = Options.fromYaml(yf,gname=gname)
+    def console(sumocfg_path,time,nroutes,minrtlen,maxrtlen,vnum,tdevp,oname,obstacles:int,save_gparams:bool):
+
+        scfg = _SCFG(_Path(sumocfg_path))
+        yf = _Path(os.getcwd()).resolve() / "gparams.yaml"
+
+        options = Options.fromYaml(yf)
         options.overwriteWith(
             time=time,
             nroutes=nroutes,
@@ -97,27 +85,14 @@ def getConsole(ip_probabs:dict,vp_probabs:dict,vcl_params:dict,probabilistic_mod
             maxrtlen=maxrtlen,
             vnum=vnum,
             tdevp=tdevp,
-            cfg=cfg,
             oname=oname,
             obstacles=obstacles
         )
         if save_gparams:
             options.dump(yf)
-        
-        FOLDER_PATH = Path(__file__).parent.parent / "generated" / gname
-        IMPORT_PATH = FOLDER_PATH / options.cfg
-        OUTPUT_FILE = FOLDER_PATH / options.oname
-
-        # ==================== MAP DEFINTION VIA NODES AND EDGES ====================
-        try:
-            nodes_raw, edges_raw, sources = loadPyConfig(IMPORT_PATH)
-        except Exception as e:
-            raise Exception(f"{Fore.RED}Error loading configuration file {options.cfg}:{Style.RESET_ALL}\n{e}")
-        g = Graph()
-        g.addRawNodes(nodes_raw)
-        g.addRawEdges(edges_raw)
+        g = _GR(netfile=scfg.net_file)
         generator = Generator(
-            OUTPUT_FILE=OUTPUT_FILE,
+            OUTPUT_FILE=str(scfg.routes_file),
             TIME_HORIZON_S=options.time,
             N_ROUTES=options.nroutes,
             MIN_RTLEN=options.minrtlen,
@@ -129,7 +104,6 @@ def getConsole(ip_probabs:dict,vp_probabs:dict,vcl_params:dict,probabilistic_mod
             vcl_params=vcl_params,
             graph=g,
             probabilistic_mod_multipliers=probabilistic_mod_multipliers,
-            source_node_ids=sources,
             obstacle_num=options.obstacles
         )
 
