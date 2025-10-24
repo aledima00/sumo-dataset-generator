@@ -1,49 +1,120 @@
 from pathlib import Path as _Path
 from xml.etree import ElementTree as _ET
 
+def getValueOrNone(from_elm:_ET.Element):
+    if from_elm is None or 'value' not in from_elm.attrib:
+        return None
+    else:
+        return from_elm.attrib['value']
+    
+
+class MissingParamForSumoCfg(Exception):
+    def __init__(self, param:str):
+        super().__init__()
+        self.message = f"Missing Parameter '{param}' for Configuration: please provide it with the dedicated CLI option or edit the SUMO config file directly."
+    
 class SumoCfg:
     sumocfg_file:_Path
-    net_file:_Path
-    routes_file:_Path
-    duration_s:int
-    step_length_s:float
+    __tree: _ET.ElementTree
 
-    def getTag(self,from_element:_ET.Element, tag_name:str,*,check=False)->_ET.Element:
-        res = from_element.find(tag_name)
-        if check and res is None:
-            raise ValueError(f"Tag <{from_element}/> in SUMO config file {self.sumocfg_file} does not contain a valid <{tag_name}/> tag")
-        return res
-        
-    def checkAndGetAttr(self,from_element:_ET.Element, attr_name:str)->str:
-        res = from_element.attrib.get(attr_name,None)
-        if res is None:
-            raise ValueError(f"Tag <{from_element}/> in SUMO config file {self.sumocfg_file} does not contain a valid attribute '{attr_name}'")
-        return res
-
+    def __getOrNone(self, *pathlike_args):
+        cur = self.__tree.getroot()
+        for tag in pathlike_args:
+            if cur is None:
+                return None
+            cur = cur.find(tag)
+        return cur
     
+    def __getOrCreate(self, *pathlike_args)->_ET.Element:
+        cur = self.__tree.getroot()
+        for tag in pathlike_args:
+            elm = cur.find(tag)
+            if elm is None:
+                elm = _ET.SubElement(cur, tag)
+            cur = elm
+        return cur
+
+    @property
+    def net_file(self)->_Path:
+        netfile_elm = self.__getOrNone('input','net-file')
+        netFname = getValueOrNone(netfile_elm)
+        return None if netFname is None else (self.sumocfg_file.parent / netFname).resolve()
+    
+    @net_file.setter
+    def net_file(self,new_netfile:_Path):
+        netfile_elm = self.__getOrCreate('input','net-file')
+        netfile_elm.attrib['value'] = str(new_netfile.relative_to(self.sumocfg_file.parent))
+        
+    @property
+    def routes_file(self)->_Path:
+        routefile_elm = self.__getOrNone('input','route-files')
+        routeFname = getValueOrNone(routefile_elm)
+        return (self.sumocfg_file.parent / routeFname).resolve() if routeFname is not None else None
+    
+    @routes_file.setter
+    def routes_file(self,new_routefile:_Path):
+        routefile_elm = self.__getOrCreate('input','route-files')
+        routefile_elm.attrib['value'] = str(new_routefile.relative_to(self.sumocfg_file.parent))
+    
+    @property
+    def duration_s(self)->int|None:
+        begin_elm = self.__getOrNone('time','begin')
+        end_elm = self.__getOrNone('time','end')
+        begin_val = getValueOrNone(begin_elm)
+        end_val = getValueOrNone(end_elm)
+        if begin_val is None or end_val is None:
+            return None
+        begin_s = int(begin_val)
+        end_s = int(end_val)
+        return end_s - begin_s
+    
+    @duration_s.setter
+    def duration_s(self,new_duration_s:int):
+        begin_elm = self.__getOrCreate('time','begin')
+        end_elm = self.__getOrCreate('time','end')
+        if 'value' not in begin_elm.attrib:
+            begin_elm.attrib['value'] = '0'
+        begin_s = int(begin_elm.attrib['value'])
+        end_elm.attrib['value'] = str(new_duration_s + begin_s)
+    
+    @property
+    def step_length_s(self)->float|None:
+        steplen_elm = self.__getOrNone('time','step-length')
+        steplen_val = getValueOrNone(steplen_elm)
+        return float(steplen_val) if steplen_val is not None else None
+    
+    @step_length_s.setter
+    def step_length_s(self,new_steplen_s:float):
+        steplen_elm = self.__getOrCreate('time','step-length')
+        steplen_elm.attrib['value'] = str(new_steplen_s)
 
     def __init__(self, sumocfg_path: _Path):
         self.sumocfg_file = sumocfg_path.resolve()
-        rt = _ET.parse(self.sumocfg_file).getroot()
-        input_tag = self.getTag(rt,'input', check=True)
-        net_tag = self.getTag(input_tag,'net-file', check=True)
-        routes_tag = self.getTag(input_tag,'route-files', check=True)
+        self.__tree = _ET.parse(self.sumocfg_file)
+        if self.__tree.getroot() is None:
+            raise ValueError(f"SUMO config file {self.sumocfg_file} is not a valid XML file")
+        
+    def save(self):
+        self.__tree.write(self.sumocfg_file,encoding='UTF-8',xml_declaration=True)
 
-        netfname = self.checkAndGetAttr(net_tag,'value')
-        routesfname = self.checkAndGetAttr(routes_tag,'value')
-        self.net_file = (self.sumocfg_file.parent / netfname).resolve()
-        self.routes_file = (self.sumocfg_file.parent / routesfname).resolve()
+    def overwrite(self,*, time:int=None, route_filename=None, net_filename=None, step_len:float=None):
+        if time is not None:
+            self.duration_s = time
+        if route_filename is not None:
+            self.routes_file = _Path(route_filename).resolve()
+        if net_filename is not None:
+            self.net_file = _Path(net_filename).resolve()
+        if step_len is not None:
+            self.step_length_s = step_len
 
-        time_tag = self.getTag(rt,'time')
-        if time_tag is not None:
-            begin_tag= self.getTag(time_tag,'begin')
-            end_tag= self.getTag(time_tag,'end')
-            steplen_tag = self.getTag(time_tag,'step-length')
+    def checkReqParams(self):
+        if self.duration_s is None:
+            raise MissingParamForSumoCfg('time')
+        if self.routes_file is None:
+            raise MissingParamForSumoCfg('route-filename')
+        if self.net_file is None:
+            raise MissingParamForSumoCfg('net-filename')
+        if self.step_length_s is None:
+            raise MissingParamForSumoCfg('step-len')
 
-            if begin_tag is not None and end_tag is not None:
-                begin_s = int(self.checkAndGetAttr(begin_tag,'value'))
-                end_s = int(self.checkAndGetAttr(end_tag,'value'))
-                self.duration_s = end_s - begin_s
-
-            if steplen_tag is not None:
-                self.step_length_s = float(self.checkAndGetAttr(steplen_tag,'value'))
+__all__ = ["SumoCfg"]
