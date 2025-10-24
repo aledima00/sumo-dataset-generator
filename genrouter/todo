@@ -1,0 +1,3 @@
+- create sumocfg if not exists
+- make default Params too (yml, ...)
+- add possibility to specify source edges/nodes

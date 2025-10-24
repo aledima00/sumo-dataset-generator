@@ -1,10 +1,11 @@
 from .graph import GraphRepresentation as _GR
-from .vehicles import VType as _VT, Vehicle as _VH, VParams as _VP, IParams as _IP, VClass as _VC
+from .vehicles import VType as _VT, Vehicle as _VH, VParams as _VP, IParams as _IP
 import random as _RND
 from pathlib import Path as _Path
+from .genopts import GenOptions as _GenOptions
 
 ObstacleVtype = _VT(
-    "OBSTACLE",
+    id="OBSTACLE",
     vp=_VP(
         accel=0.1,
         decel=0.1,
@@ -26,30 +27,30 @@ ObstacleVtype = _VT(
 )
 
 class Generator:
-    def __init__(self,*,OUTPUT_FILE:_Path,TIME_HORIZON_S:int,N_ROUTES:int,MIN_RTLEN:int,MAX_RTLEN:int,VNUM:int,TDEV_PROP:float,ip_probabs:dict,vp_probabs:dict,vcl_params:dict,graph:_GR,probabilistic_mod_multipliers:dict={},source_edge_ids:list[str]=None,obstacle_num:int=0):
+    def __init__(self,*,gparams:_GenOptions,OUTPUT_FILE:_Path,TIME_HORIZON_S:int,graph:_GR,source_edge_ids:list[str]=None):
         self.OUTPUT_FILE = OUTPUT_FILE
         self.TIME_HORIZON_S = TIME_HORIZON_S
-        self.N_ROUTES = N_ROUTES
-        self.MIN_RTLEN = MIN_RTLEN
-        self.MAX_RTLEN = MAX_RTLEN
-        self.VNUM = VNUM
-        self.TDEV = TDEV_PROP * TIME_HORIZON_S
-        self.ip_probabs = ip_probabs
-        self.vp_probabs = vp_probabs
-        self.vcl_params = vcl_params
-        self.vtypes = Generator.__gen_vtypes(ip_probabs,vp_probabs,vcl_params)
+        self.N_ROUTES = gparams.nroutes
+        self.MIN_RTLEN = gparams.minrtlen
+        self.MAX_RTLEN = gparams.maxrtlen
+        self.VNUM = gparams.vnum
+        self.TDEV = gparams.tdevp * TIME_HORIZON_S
+        self.obstacle_num = gparams.obstacles
+        self.ip_probabs = gparams.IPDict()
+        self.vp_probabs = gparams.VPDict()
+        self.vcl_probabs = gparams.VCLDict()
+        self.probabilistic_mod_multipliers = gparams.PMDict()
+        self.vtypes = self.__gen_vtypes()
         self.graph = graph
-        self.probabilistic_mod_multipliers = probabilistic_mod_multipliers
         self.source_edge_ids = source_edge_ids
-        self.obstacle_num = obstacle_num
+        self.num_used_vtypes = 0
     
-    @staticmethod
-    def __gen_vtypes(ip_probabs,vp_probabs,vcl_params):
+    def __gen_vtypes(self):
         vtypes = []
-        for ipn,(ipp,ip) in ip_probabs.items():
-            for vpn,(vpp,vp) in vp_probabs.items():
-                for vcln,(vclp,vcl) in vcl_params.items():
-                    vtypes.append( (_VT(f"{vpn}_{ipn}_{vcln}", vp=vp, ip=ip, v_class=vcl), ipp*vpp*vclp))
+        for ipn,(ipp,ip) in self.ip_probabs.items():
+            for vpn,(vpp,vp) in self.vp_probabs.items():
+                for vcln,(vclp,vcl) in self.vcl_probabs.items():
+                    vtypes.append( (_VT(id=f"{vpn}_{ipn}_{vcln}", vp=vp, ip=ip, vcl=vcl), ipp*vpp*vclp))
         return vtypes
     
     @staticmethod
@@ -68,10 +69,11 @@ class Generator:
     
         
     def apply_random_modificators(self,vt:_VT)->_VT:
-        nvt = _VT(vt.id, vp=vt.vp, ip=vt.ip, v_class=vt.v_class)
+        nvt = _VT(id=vt.id, vp=vt.vp, ip=vt.ip, vcl=vt.vcl)
         for modname,moddata in self.probabilistic_mod_multipliers.items():
-            if _RND.random() <= moddata["p"]:
-                for attr,mult in moddata["modifications"].items():
+            p,mods = moddata
+            if _RND.random() <= p:
+                for attr,mult in mods.items():
                     if hasattr(nvt.vp,attr):
                         setattr(nvt.vp,attr,getattr(nvt.vp,attr)*mult)
                     elif hasattr(nvt.ip,attr):
@@ -126,7 +128,7 @@ class Generator:
                 f.write(f"\t{v.xml()}\n")
             f.write('\n')
 
-            f.write('</routes>\n')            
-            return len(used_vtypes)
+            f.write('</routes>\n')   
+        self.num_used_vtypes = len(used_vtypes)
 
-        print(f"Generated {self.OUTPUT_FILE} with {len(routes)} routes and {len(vehicles)} vehicles, using {len(used_vtypes)} vtypes out of {len(self.vtypes)} possible combinations")
+__all__ = ["Generator"]

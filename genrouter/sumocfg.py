@@ -7,6 +7,12 @@ def getValueOrNone(from_elm:_ET.Element):
     else:
         return from_elm.attrib['value']
     
+
+class MissingParamForSumoCfg(Exception):
+    def __init__(self, param:str):
+        super().__init__()
+        self.message = f"Missing Parameter '{param}' for Configuration: please provide it with the dedicated CLI option or edit the SUMO config file directly."
+    
 class SumoCfg:
     sumocfg_file:_Path
     __tree: _ET.ElementTree
@@ -51,24 +57,24 @@ class SumoCfg:
         routefile_elm.attrib['value'] = str(new_routefile.relative_to(self.sumocfg_file.parent))
     
     @property
-    def duration_s(self)->float|None:
+    def duration_s(self)->int|None:
         begin_elm = self.__getOrNone('time','begin')
         end_elm = self.__getOrNone('time','end')
         begin_val = getValueOrNone(begin_elm)
         end_val = getValueOrNone(end_elm)
         if begin_val is None or end_val is None:
             return None
-        begin_s = float(begin_val)
-        end_s = float(end_val)
+        begin_s = int(begin_val)
+        end_s = int(end_val)
         return end_s - begin_s
     
     @duration_s.setter
-    def duration_s(self,new_duration_s:float):
+    def duration_s(self,new_duration_s:int):
         begin_elm = self.__getOrCreate('time','begin')
         end_elm = self.__getOrCreate('time','end')
         if 'value' not in begin_elm.attrib:
             begin_elm.attrib['value'] = '0'
-        begin_s = float(begin_elm.attrib['value'])
+        begin_s = int(begin_elm.attrib['value'])
         end_elm.attrib['value'] = str(new_duration_s + begin_s)
     
     @property
@@ -89,6 +95,26 @@ class SumoCfg:
             raise ValueError(f"SUMO config file {self.sumocfg_file} is not a valid XML file")
         
     def save(self):
-        self.__tree.write(self.sumocfg_file)
+        self.__tree.write(self.sumocfg_file,encoding='UTF-8',xml_declaration=True)
+
+    def overwrite(self,*, time:int=None, route_filename=None, net_filename=None, step_len:float=None):
+        if time is not None:
+            self.duration_s = time
+        if route_filename is not None:
+            self.routes_file = _Path(route_filename).resolve()
+        if net_filename is not None:
+            self.net_file = _Path(net_filename).resolve()
+        if step_len is not None:
+            self.step_length_s = step_len
+
+    def checkReqParams(self):
+        if self.duration_s is None:
+            raise MissingParamForSumoCfg('time')
+        if self.routes_file is None:
+            raise MissingParamForSumoCfg('route-filename')
+        if self.net_file is None:
+            raise MissingParamForSumoCfg('net-filename')
+        if self.step_length_s is None:
+            raise MissingParamForSumoCfg('step-len')
 
 __all__ = ["SumoCfg"]
