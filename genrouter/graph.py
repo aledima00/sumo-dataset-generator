@@ -3,10 +3,9 @@ from sumolib.net import Net as _Net
 from sumolib.net.edge import Edge as _Edge
 from sumolib.net.node import Node as _Node
 from sumolib.net.connection import Connection as _Conn
-import click as _click
 from pathlib import Path as _Path
 from dataclasses import dataclass as _dc, field as _field
-import random
+import random as _random
 
 def e2eid(edge:_Edge)->str:
     return edge.getID()
@@ -113,16 +112,16 @@ class GraphRepresentation:
         if to_junction is None:
             return rt # TRUNCATE IF NO JUNCTION
         possible_connections = to_junction.getByFromEdge(last_edge_id)
-        next_connection = random.choice( list(possible_connections) )
+        next_connection = _random.choice( list(possible_connections) )
         rt.edges.append( next_connection.to_edge_id )
 
     def randomRoute(self, route_id:str,*,min_steps:int=2, max_steps:int=10, source_edge_ids:set[str]=None)->RouteRepresentation:
         if source_edge_ids is None or len(source_edge_ids)==0:
-            source_edge_id = random.choice( list(self.__edges) )
+            source_edge_id = _random.choice( list(self.__edges) )
         else:
-            source_edge_id = random.choice( list(source_edge_ids) )
+            source_edge_id = _random.choice( list(source_edge_ids) )
         rt = RouteRepresentation(id=route_id, start_edge_id=source_edge_id)
-        n_steps = random.randint(min_steps, max_steps)
+        n_steps = _random.randint(min_steps, max_steps)
         for _ in range(n_steps):
             self.__rt_rand_step(rt)
         return rt
