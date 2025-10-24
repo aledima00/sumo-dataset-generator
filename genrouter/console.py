@@ -41,6 +41,7 @@ class GenOptions:
     def dump(self,yaml_path:_Path):
         options_dict = _asdict(self)
         with open(yaml_path,'w') as yf:
+            yf.write("---\n")
             yaml.dump(options_dict,yf,default_flow_style=False,allow_unicode=True)
 
     def overwriteWith(self,**kwargs):
@@ -52,6 +53,10 @@ def checkRequiredParam(param):
     if param is None:
         raise ValueError(f"Required parameter '{param}' not specified nor present in SUMO config file!")
     
+def shortenPath(p:_Path)->str:
+    return str(p if len(p.parts)<=4 else _Path(p.parts[0], p.parts[1], "...", p.parts[-2], p.parts[-1]))
+
+    
 def getConsole(ip_probabs:dict,vp_probabs:dict,vcl_params:dict,probabilistic_mod_multipliers:dict):
 
     @click.command()
@@ -59,14 +64,14 @@ def getConsole(ip_probabs:dict,vp_probabs:dict,vcl_params:dict,probabilistic_mod
     @click.option('--time', type=int, default=None, help=f'Time horizon in seconds (default: from SUMO config file). If specified, will override the one in the SUMO config file.')
     @click.option('--route-filename',type=str, default=None, help=f'Output route filename (default: from SUMO config file). If specified, will override the one in the SUMO config file.')
     @click.option('--net-filename',type=str, default=None, help=f'Input network filename (default: from SUMO config file). If specified, will override the one in the SUMO config file.')
+    @click.option('--step-len', type=float, default=None, help='Simulation step length in seconds (default: from SUMO config file). If specified, will override the one in the SUMO config file.')
     @click.option('--nroutes',type=int, default=None, help=f'Number of routes to generate (default: {DEF_N_ROUTES})')
     @click.option('--minrtlen', type=int, default=None, help=f'Minimum route length in number of edges (default: {DEF_MIN_RTLEN})')
     @click.option('--maxrtlen', type=int, default=None, help=f'Maximum route length in number of edges (default: {DEF_MAX_RTLEN})')
     @click.option('--vnum', type=int, default=None, help=f'Number of vehicles to generate (default: {DEF_VNUM})')
     @click.option('--tdevp', type=float, default=None, help=f'Time deviation as proportion of time horizon (default: {DEF_TDEV_PROP})')
     @click.option('--obstacles',type=int, default=None,help='Number of obstacle vehicles to generate (default: 0)')
-    @click.option('--save-gparams',is_flag=True,help='If set, saves the generation parameters to a gparams.yaml file in the cwd.')
-    def console(sumocfg_path,time,nroutes,minrtlen,maxrtlen,vnum,tdevp,route_filename,net_filename,obstacles:int,save_gparams:bool):
+    def console(sumocfg_path,time,nroutes,step_len,minrtlen,maxrtlen,vnum,tdevp,route_filename,net_filename,obstacles:int):
 
         scfg = _SCFG(_Path(sumocfg_path))
         if time is not None:
@@ -81,9 +86,13 @@ def getConsole(ip_probabs:dict,vp_probabs:dict,vcl_params:dict,probabilistic_mod
             scfg.net_file = _Path(net_filename).resolve()
         else:
             checkRequiredParam(scfg.net_file)
+        if step_len is not None:
+            scfg.step_length_s = step_len
+        else:
+            checkRequiredParam(scfg.step_length_s)
 
         scfg.save()
-        
+
         yf = _Path(os.getcwd()).resolve() / "gparams.yaml"
 
         options = GenOptions.fromYaml(yf)
@@ -95,11 +104,11 @@ def getConsole(ip_probabs:dict,vp_probabs:dict,vcl_params:dict,probabilistic_mod
             tdevp=tdevp,
             obstacles=obstacles
         )
-        if save_gparams:
-            options.dump(yf)
+        options.dump(yf)
+        click.echo(f"{Fore.CYAN}[generation parameters saved to './{yf.name}']{Style.RESET_ALL}")
         g = _GR(netfile=scfg.net_file)
         generator = Generator(
-            OUTPUT_FILE=str(scfg.routes_file),
+            OUTPUT_FILE=scfg.routes_file,
             TIME_HORIZON_S=scfg.duration_s,
             N_ROUTES=options.nroutes,
             MIN_RTLEN=options.minrtlen,
@@ -114,8 +123,16 @@ def getConsole(ip_probabs:dict,vp_probabs:dict,vcl_params:dict,probabilistic_mod
             obstacle_num=options.obstacles
         )
 
-        gen_out = generator.generate()
-        click.echo(f"{Fore.GREEN}Generation completed successfully!{Style.RESET_ALL}"+"".join([f"\n   {Fore.YELLOW}- {k}{Fore.RESET}: {v}" for k,v in gen_out.items()]))
-        if save_gparams:
-            click.echo(f"{Fore.CYAN}[generation parameters saved to '{yf.parts[-1]}']{Style.RESET_ALL}")
+        used_vtypes = generator.generate()
+        prints = [
+            ("OUTPUT ROUTE FILE", shortenPath(scfg.routes_file)),
+            ("INPUT NETWORK FILE", shortenPath(scfg.net_file)),
+            ("TOTAL SIMULATION TIME (S)", scfg.duration_s),
+            ("SIMULATION STEP LENGTH (S)", scfg.step_length_s),
+            ("NUM. OF ROUTES", options.nroutes),
+            ("NUM. OF OBSTACLES", options.obstacles),
+            ("NUM. OF VEHICLES", options.vnum),
+            ("NUM. OF UNIQUE VTYPEs", used_vtypes)
+        ]
+        click.echo(f"{Fore.GREEN}Generation completed successfully!{Style.RESET_ALL}"+"".join([f"\n{Fore.YELLOW}  - {k}{Style.RESET_ALL}: {v}" for k,v in prints]))
     return console
