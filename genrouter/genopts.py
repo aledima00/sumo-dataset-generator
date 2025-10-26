@@ -31,14 +31,28 @@ def _printFormatted(elm,indent:int=0):
         case _:
             _indp(f"{elm}", indnl=indent)
 
-def _normalize_dict(ld:list[dict]):
-    if ld is None:
-        raise ValueError("List of dictionaries is None.")
-    totalp = sum([e.get("p",0) for e in ld])
-    for d in ld:
-        d["p"] = d.get("p",0) / totalp if totalp > 0 else 0
-        if d.get("name",None) is None:
+def _dc_or_dict_asdict(elm)->dict:
+    return elm if type(elm) is dict else _asdict(elm)
+
+def _normalize_dict(ld:list[dict],factory):
+    if len(ld)==0:
+        ld.append(_dc_or_dict_asdict(factory()))
+        ld[0]["p"] = 1.0
+        ld[0]["name"] = "DEFAULT"
+        return
+            
+    totalp = sum([e.get("p",0.0) for e in ld])
+    for i in range(len(ld)):
+        dtmp = ld[i].copy()
+        del dtmp["p"]
+        del dtmp["name"]
+        dtmp = factory(**dtmp)
+        dtmp = _dc_or_dict_asdict(dtmp)
+        dtmp["p"] = ld[i].get("p",0.0) / totalp if totalp > 0 else 0
+        dtmp["name"] = ld[i].get("name")
+        if dtmp["name"] is None:
             raise ValueError("Each dictionary entry must have a 'name' field.")
+        ld[i] = dtmp
 
 def _ld_to_dt(ld:list[dict],clout)->dict[tuple]:
     ret = dict()
@@ -61,6 +75,8 @@ class GenOptions:
     tdevp: float = DEF_TDEV_PROP
     obstacles: int = DEF_OBSTACLES
 
+    source_edges: list[str] = _field(default_factory=list)
+    
     VehicleParams: list[dict] = _field(default_factory=list)
     IndividualParams: list[dict] = _field(default_factory=list)
     ClassParams: list[dict] = _field(default_factory=list)
@@ -73,33 +89,35 @@ class GenOptions:
         return gopts
     
     def loadYaml(self,yaml_path:_Path):
+        emptyyml:bool = False
         if (not yaml_path.exists()) or (not yaml_path.is_file()):
-            return
-        with open(yaml_path,'r') as yf:
-            options_dict:dict = _yaml.safe_load(yf)
-        
-        
-        for k,v in options_dict.items():
-            if not hasattr(self,k):
-                raise ValueError(f"Unknown generation option '{k}' in YAML file '{yaml_path}'")
-            elif type(v).__name__ != 'list':
-                setattr(self,k,v)
-            else:
-                optl = options_dict.get(k,None)
-                if optl is not None:
-                    l:list[dict] = getattr(self,k)
-                    l.clear()
-                    for d in optl:
-                        l.append(d.copy())
+            yaml_path.parent.mkdir(parents=True,exist_ok=True)
+            yaml_path.touch()
+            emptyyml = True
+        else:
+            with open(yaml_path,'r') as yf:
+                options_dict:dict = _yaml.safe_load(yf)
+                if options_dict is None:
+                    emptyyml = True
 
-        _normalize_dict(self.VehicleParams)
-        _normalize_dict(self.IndividualParams)
-        _normalize_dict(self.ClassParams)
+        if not emptyyml:        
+            for k,v in options_dict.items():
+                if not hasattr(self,k):
+                    raise ValueError(f"Unknown generation option '{k}' in YAML file '{yaml_path}'")
+                else:
+                    setattr(self,k,v)
+
+        _normalize_dict(self.VehicleParams, factory=_VP)
+        _normalize_dict(self.IndividualParams,factory=_IP)
+        _normalize_dict(self.ClassParams,factory=dict) # to be done
     
     def dump(self,yaml_path:_Path):
         options_dict = _asdict(self)
         with open(yaml_path,'w') as yf:
             yf.write("---\n")
+            for k,v in _asdict(self).items():
+                if v is None:
+                    del options_dict[k]
             _yaml.dump(options_dict,yf,default_flow_style=False,allow_unicode=True)
 
     def overwriteWith(self,**kwargs):
