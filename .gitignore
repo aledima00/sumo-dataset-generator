@@ -11,6 +11,7 @@ wheels/
 
 provided/
 generated/
-gparams.yaml
 out_plabels/
 plabels/
+gparams.yaml
+gparams-compiled.yaml

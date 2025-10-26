@@ -38,6 +38,7 @@ def generate(sumocfg_path,time,nroutes,step_len,minrtlen,maxrtlen,vnum,tdevp,rou
         scfg.save()
 
         yf = _Path(_os.getcwd()).resolve() / "gparams.yaml"
+        yf2 = _Path(_os.getcwd()).resolve()/ "gparams-compiled.yaml"
 
         options = _GOPTS.fromYaml(yf)
         options.overwriteWith(
@@ -48,7 +49,7 @@ def generate(sumocfg_path,time,nroutes,step_len,minrtlen,maxrtlen,vnum,tdevp,rou
             tdevp=tdevp,
             obstacles=obstacles
         )
-        options.dump(yf)
+        options.dump(yf2)
         _clk.echo(f"{_Fore.CYAN}[generation parameters saved to './{yf.name}']{_Style.RESET_ALL}")
         g = _GR(netfile=scfg.net_file)
         generator = _G(
