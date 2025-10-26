@@ -4,6 +4,15 @@ import random as _RND
 from pathlib import Path as _Path
 from .genopts import GenOptions as _GenOptions
 
+additional_attributes={
+    "departPos":"random_free",
+    "arrivalLane":"first",
+    "arrivalSpeed":"0.0",
+    "departPosLat":"right",
+    "arrivalPosLat":"right",
+    "insertionChecks":"none"
+}
+
 ObstacleVtype = _VT(
     id="OBSTACLE",
     vp=_VP(
@@ -27,7 +36,7 @@ ObstacleVtype = _VT(
 )
 
 class Generator:
-    def __init__(self,*,gparams:_GenOptions,OUTPUT_FILE:_Path,TIME_HORIZON_S:int,graph:_GR,source_edge_ids:list[str]=None):
+    def __init__(self,*,gparams:_GenOptions,OUTPUT_FILE:_Path,TIME_HORIZON_S:int,graph:_GR):
         self.OUTPUT_FILE = OUTPUT_FILE
         self.TIME_HORIZON_S = TIME_HORIZON_S
         self.N_ROUTES = gparams.nroutes
@@ -40,9 +49,9 @@ class Generator:
         self.vp_probabs = gparams.VPDict()
         self.vcl_probabs = gparams.VCLDict()
         self.probabilistic_mod_multipliers = gparams.PMDict()
+        self.source_edge_ids = gparams.source_edges
         self.vtypes = self.__gen_vtypes()
         self.graph = graph
-        self.source_edge_ids = source_edge_ids
         self.num_used_vtypes = 0
     
     def __gen_vtypes(self):
@@ -50,7 +59,7 @@ class Generator:
         for ipn,(ipp,ip) in self.ip_probabs.items():
             for vpn,(vpp,vp) in self.vp_probabs.items():
                 for vcln,(vclp,vcl) in self.vcl_probabs.items():
-                    vtypes.append( (_VT(id=f"{vpn}_{ipn}_{vcln}", vp=vp, ip=ip, vcl=vcl), ipp*vpp*vclp))
+                    vtypes.append( (_VT(id=f"{vpn}_{ipn}_{vcln}", vp=vp, ip=ip, vcl=vcl,additional_attributes=additional_attributes), ipp*vpp*vclp))
         return vtypes
     
     @staticmethod
@@ -93,11 +102,11 @@ class Generator:
             vt = self.apply_random_modificators(vt)
             used_vtypes.add(vt)
             rt = _RND.choice(routes)
-            vehicles.append(_VH(f"VEH{i}", vt.id, rt.id, dts[i]))
+            vehicles.append(_VH(f"VEH{i}", vt.id, rt.id, dts[i],additional_attributes=additional_attributes))
 
         for on in range(self.obstacle_num):
             rt = _RND.choice(routes)
-            vehicles.append(_VH(f"OBS_{on}", ObstacleVtype.id, rt.id, dts[self.VNUM+on]))
+            vehicles.append(_VH(f"OBS_{on}", ObstacleVtype.id, rt.id, dts[self.VNUM+on],additional_attributes=additional_attributes))
 
         vehicles.sort(key=lambda v: v.depart_time)
 
