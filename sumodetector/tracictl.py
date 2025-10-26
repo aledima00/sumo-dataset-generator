@@ -5,11 +5,16 @@ import traci as _traci
 from enum import Enum as _EN
 from pathlib import Path as _Path
 from .labels import LabelsEnum as _LE, MultiLabel as _MLB
-from .pack import Frame as _Frame, StaticPackAnalyzer as _SPA
-from .vehicle import Vehicle as _Vehicle
+from .map import MapParser as _MP
+from .sumocfg import SumoCfg as _SCFG
 from colorama import Fore as _Fore, Style as _Style
 import re as _re
 import shutil as _sh
+import time as _t
+import numpy as _np
+
+def tlog(val:str):
+    _click.echo(f"{_Fore.MAGENTA}[{_traci.simulation.getTime()}] {val}{_Style.RESET_ALL}")
 
 class CollisionAction(_EN):
     TELEPORT = "teleport"
@@ -19,57 +24,219 @@ class CollisionAction(_EN):
 
 
 class TraciController:
-    plabels:list[_MLB]=[]
-    def __init__(self,*,gui:bool,cfg_path:str,step_len:float,frame_pack_size:int,sim_time_s:float,on_collision:CollisionAction,warnings:bool):
+    plabels:list[_MLB]
+    gui:bool
+    step_len:float
+    frame_pack_size:int
+    sim_time_s:float
+    on_collision:CollisionAction
+    warnings:bool
+    sumobin:str
+    delay:float
+    total_steps:int
+    total_packs:int
+
+    max_speed_per_lane:dict[str,float]
+    baseline_speed_per_lane:dict[str,float]
+    slowdown_traffic_threshold:float
+    traffic_jam_min_size:int
+    braking_min_count:int
+
+    vehs_lanes:dict[str,str]
+    vehs_leaders:dict[str,str]
+    vehs_angles:dict[str,float]
+
+    map_parser:_MP
+    cfg:_SCFG
+
+    def __init__(self,*,gui:bool,sumo_cfg:_SCFG,step_len:float,frame_pack_size:int,sim_time_s:float,on_collision:CollisionAction,warnings:bool,delay:float=None):
+        self.plabels = []
         self.gui = gui
-        self.cfg_path = _Path(cfg_path).resolve()
+        self.cfg = sumo_cfg
         self.step_len = step_len
         self.frame_pack_size = frame_pack_size
         self.sim_time_s = sim_time_s
         self.on_collision = on_collision
         self.warnings = warnings
+        self.delay = delay
 
         self.sumobin = _sumolib.checkBinary('sumo-gui' if gui else 'sumo')
         self.total_steps = _floor(self.sim_time_s / self.step_len)
         self.total_packs = _floor(self.total_steps / self.frame_pack_size)
 
+        self.map_parser = _MP(str(self.cfg.net_file))
 
+        self.acc_braking_threshold = -2.0
+        self.slowdown_traffic_threshold = 0.1
+        self.merge_speed_threshold = 0.3
+        self.traffic_jam_min_size = 8
+        self.braking_min_count = 4
+
+        # state
+        self.vehs_lanes = dict()
+        self.vehs_leaders = dict()
+
+    @staticmethod
+    def __getVehEdge(vid:str)->str:
+        if vid is None or vid not in _traci.vehicle.getIDList():
+            return None
+        lid = _traci.vehicle.getLaneID(vid)
+        eid = _traci.lane.getEdgeID(lid)
+        return eid
+
+    @staticmethod
+    def __getRealEdgeLeader(vid:str)->str:
+        eid = TraciController.__getVehEdge(vid)
+        vehs = sorted(filter( lambda x: not str(x).startswith("OBS_"), _traci.edge.getLastStepVehicleIDs(eid)),key=lambda x: _traci.vehicle.getLanePosition(x))
+
+        nextv = None
+        for i,vidi in enumerate(vehs):
+            if vid == vidi:
+                if i + 1 < len(vehs):
+                    nextv = vehs[i + 1]
+                break
+        return nextv
+    
+
+    def __updateState(self):
+        for vid in _traci.vehicle.getIDList():
+            if not str(vid).startswith("OBS_"):
+                lane_id = _traci.vehicle.getLaneID(vid) 
+                leader_id = self.__getRealEdgeLeader(vid)
+                self.vehs_leaders[vid] = leader_id
+                self.vehs_lanes[vid] = lane_id
+    
+    @staticmethod
+    def __checkCollision(lb)->bool:
+        if lb.checkLabel(_LE.COLLISION):
+            return True
+        clist = _traci.simulation.getCollidingVehiclesIDList()
+        if len(clist)>0:
+            tlog(f"Collision detected among vehicles: {clist}")
+            lb.setLabel(_LE.COLLISION)
+            return True
+
+    def __checkBraking(self,lb)->bool:
+        if lb.checkLabel(_LE.BRAKING):
+            return True
+        vbs = []
+        for vid in _traci.vehicle.getIDList():
+            if not str(vid).startswith("OBS_"):
+                acc = _traci.vehicle.getAcceleration(vid)
+                if acc < self.acc_braking_threshold:
+                    vbs.append(vid)
+                if len(vbs) >= self.braking_min_count:
+                    tlog(f"Braking detected for vehicles: {vbs}")
+                    lb.setLabel(_LE.BRAKING)
+                    return True
+            
+    @staticmethod
+    def __checkObstacles(lb):
+        if lb.checkLabel(_LE.OBSTACLE_IN_ROAD):
+            return True
+        for vid in _traci.vehicle.getIDList():
+            if str(vid).startswith("OBS_"):
+                tlog(f"Obstacle {vid} detected in simulation.")
+                lb.setLabel(_LE.OBSTACLE_IN_ROAD)
+                return 
+            
+    def __checkTrafficJam(self,lb):
+        if lb.checkLabel(_LE.TRAFFIC_JAM):
+            return True
+        for laneId in self.max_speed_per_lane.keys():
+
+            vehs_in_lane:tuple[str] = _traci.lane.getLastStepVehicleIDs(laneId)
+            if vehs_in_lane is None or len(vehs_in_lane) < self.traffic_jam_min_size:
+                continue
+
+            avg_speed = _np.mean([_traci.vehicle.getSpeed(vid) for vid in vehs_in_lane])
+
+            ratio = avg_speed / self.baseline_speed_per_lane[laneId]
+            if ratio < self.slowdown_traffic_threshold:
+                tlog(f"Traffic jam detected on lane {laneId} with average speed {avg_speed:.2f} m/s ({ratio*100:.1f}% of baseline).")
+                lb.setLabel(_LE.TRAFFIC_JAM)
+                return
+        
+
+    def __checkLCLM(self,lb:_MLB):
+        if lb.checkLabel(_LE.LANE_CHANGE) and lb.checkLabel(_LE.LANE_MERGE):
+            return True
+        for vid in _traci.vehicle.getIDList():
+            if not str(vid).startswith("OBS_"):
+                lane_id = _traci.vehicle.getLaneID(vid)
+                prev_lane_id = self.vehs_lanes.get(vid,None)
+                if prev_lane_id is not None and lane_id != prev_lane_id:
+                    e1id = _traci.lane.getEdgeID(prev_lane_id)
+                    e2id = _traci.lane.getEdgeID(lane_id)
+                    if e1id == e2id:
+                        # generic lc situation
+                        if not lb.checkLabel(_LE.LANE_CHANGE):
+                            lb.setLabel(_LE.LANE_CHANGE)
+                            tlog(f"Vehicle {vid} changed lane from {prev_lane_id} to {lane_id} on edge {e1id}.")
+                        if not lb.checkLabel(_LE.LANE_MERGE):
+                            is_lc_lm = self.map_parser.checkIfLcLm(prev_lane_id,lane_id)
+                            if is_lc_lm:
+                                lb.setLabel(_LE.LANE_MERGE)
+                                tlog(f"Vehicle {vid} performed Lane Change corresponding to Lane Merge from lane {prev_lane_id} to {lane_id} on edge {e1id}.")
+                        return True
+                    
+    def __checkOvertake(self,lb):
+        if lb.checkLabel(_LE.OVERTAKE):
+            return True
+        for vid in _traci.vehicle.getIDList():
+            if not str(vid).startswith("OBS_"):
+                old_leader_id = self.vehs_leaders.get(vid,None)
+                current_leader_id = self.__getRealEdgeLeader(vid)
+                if old_leader_id is not None and current_leader_id != old_leader_id and (self.__getVehEdge(vid) == self.__getVehEdge(old_leader_id)):
+                    lb.setLabel(_LE.OVERTAKE)
+                    tlog(f"Detected Overtake of Vehicle {vid} on {old_leader_id}")
+                    return True
+                        
+    def __checkTurn(self,lb):
+        return True
+                        
+    def __checkFrame(self,lb):
+        self.__checkCollision(lb)
+        self.__checkBraking(lb)
+        self.__checkObstacles(lb)
+        self.__checkTrafficJam(lb)
+        self.__checkLCLM(lb)
+        self.__checkOvertake(lb)
+        self.__checkTurn(lb)
+                        
+    
+
+    
     def run(self):
         _traci.start([
             self.sumobin,
-            "-c", self.cfg_path,
+            "-c", str(self.cfg.sumocfg_file),
             "--collision.action", self.on_collision.value,
             "--no-warnings", "false" if self.warnings else "true",
+            #"--lateral-resolution", "0.1",
+            "--collision.check-junctions", "true",
+            "--time-to-teleport", "0",
+            "--emergency-insert", "true",
+            "--lanechange.duration", "3.5",
+            "--time-to-impatience", "40",
             "--start"
         ])
         laneIds = _traci.lane.getIDList()
-        max_speed_per_lane = {lid: _traci.lane.getMaxSpeed(lid) for lid in laneIds}
+        self.max_speed_per_lane = {lid: _traci.lane.getMaxSpeed(lid) for lid in laneIds}
+        self.baseline_speed_per_lane = self.max_speed_per_lane.copy()
 
         for pn in range(self.total_packs):
-            pack: list[_Frame] = []
             lb = _MLB()
 
             for fn in range(self.frame_pack_size):
                 _traci.simulationStep()
-                # CHECK LABEL COL
-                if not lb.checkLabel(_LE.COLLISION):
-                    clist = _traci.simulation.getCollidingVehiclesIDList()
-                    if len(clist)>0:
-                        lb.setLabel(_LE.COLLISION)
 
-                # frame creation and push
-                frame = _Frame()
-                for vid in _traci.vehicle.getIDList(): 
-                    vobj = _Vehicle.from_traci(vid)
-                    if str(vid).startswith("OBS_"):
-                        frame.obstacles[vid] = vobj
-                    else:
-                        frame.vehicles[vid] = vobj
+                self.__checkFrame(lb)
 
-                pack.append(frame)
+                self.__updateState()
+                if self.delay is not None:
+                    _t.sleep(self.delay)
         
-            sp_analyzer = _SPA(pack, lb,max_speed_per_lane=max_speed_per_lane)
-            lb = sp_analyzer.analyze()
             self.plabels.append(lb)
         
         _traci.close() 
@@ -106,20 +273,29 @@ class TraciController:
 @_click.option('--on-collision', type=_click.Choice([e.value for e in CollisionAction]), default=CollisionAction.TELEPORT.value, help='Action to take on collision (default: remove).')
 @_click.option('-om', '--output-mode', 'output_mode', type=str, default='e', help='Output mode for pack labels: combination of [e]ncoded, [x]panded, [v]erbose (default: [e]).')
 @_click.option('--outdir', type=_click.Path(file_okay=False, dir_okay=True, writable=True), default=None, help='Output directory for label files (default: ./plabels).')
+@_click.option('--delay', '-d', type=float, default=None, help='Delay in ms between simulation steps (default: no delay).')
 @_click.argument('cfg_path', type=_click.Path(exists=True), nargs=1)
-def runSimulation(gui, no_warnings, step_len, pack_size, sim_time, on_collision, cfg_path, output_mode,outdir):
+def runSimulation(gui, no_warnings, step_len, pack_size, sim_time, on_collision, cfg_path, output_mode,outdir, delay):
     # match output_mode with regex
     if _re.fullmatch(r'[exv]+', output_mode) is None:
         raise _click.BadParameter("Output mode must be a combination of [e]ncoded, [x]panded, [v]erbose (e.g., 'ex', 'v', 'exv').")
+    
+    sumo_cfg = _SCFG(_Path(cfg_path))
+
+    if sumo_cfg.step_length_s is not None:
+        step_len = sumo_cfg.step_length_s
+    if sumo_cfg.duration_s is not None:
+        sim_time = sumo_cfg.duration_s
 
     controller = TraciController(
         gui=gui,
-        cfg_path=cfg_path,
+        sumo_cfg=sumo_cfg,
         step_len=step_len,
         frame_pack_size=pack_size,
         sim_time_s=sim_time,
         on_collision=CollisionAction(on_collision),
-        warnings = not no_warnings
+        warnings = not no_warnings,
+        delay=delay
     )
     controller.run()
     _click.echo(f"{_Fore.GREEN}Simulation completed successfully.{_Style.RESET_ALL}")
