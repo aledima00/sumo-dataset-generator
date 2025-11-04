@@ -19,12 +19,16 @@ _defopts = _GOPTS()
 @_clk.option('--net-filename',type=str, default=None, help=f'Input network filename (default: from SUMO config file). If specified, will override the one in the SUMO config file.')
 @_clk.option('--step-len', type=float, default=None, help='Simulation step length in seconds (default: from SUMO config file). If specified, will override the one in the SUMO config file.')
 @_clk.option('--nroutes',type=int, default=None, help=f'Number of routes to generate (default: {_defopts.nroutes})')
+@_clk.option('--nwalks',type=int, default=None, help=f'Number of walking routes to generate (default: {_defopts.nwalks})')
 @_clk.option('--minrtlen', type=int, default=None, help=f'Minimum route length in number of edges (default: {_defopts.minrtlen})')
 @_clk.option('--maxrtlen', type=int, default=None, help=f'Maximum route length in number of edges (default: {_defopts.maxrtlen})')
+@_clk.option('--minwalklen', type=int, default=None, help=f'Minimum walking route length in number of edges (default: {_defopts.minwalklen})')
+@_clk.option('--maxwalklen', type=int, default=None, help=f'Maximum walking route length in number of edges (default: {_defopts.maxwalklen})')
 @_clk.option('--vnum', type=int, default=None, help=f'Number of vehicles to generate (default: {_defopts.vnum})')
+@_clk.option('--pnum', type=int, default=None, help=f'Number of pedestrians to generate (default: {_defopts.pnum})')
 @_clk.option('--tdevp', type=float, default=None, help=f'Time deviation as proportion of time horizon (default: {_defopts.tdevp})')
 @_clk.option('--obstacles',type=int, default=None,help='Number of obstacle vehicles to generate (default: 0)')
-def generate(sumocfg_path,time,nroutes,step_len,minrtlen,maxrtlen,vnum,tdevp,route_filename,net_filename,obstacles:int):
+def generate(sumocfg_path,time,nroutes,nwalks,step_len,minrtlen,maxrtlen,minwalklen,maxwalklen,vnum,pnum,tdevp,route_filename,net_filename,obstacles:int):
 
     try:
         scfg = _SCFG(_Path(sumocfg_path))

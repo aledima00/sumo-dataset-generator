@@ -5,9 +5,13 @@ from .vehicles import IParams as _IP, VParams as _VP
 
 # default generation params
 DEF_N_ROUTES = 10
+DEF_N_WALKS = 20
 DEF_MIN_RTLEN = 10
 DEF_MAX_RTLEN = 20
+DEF_MIN_WALKLEN = 2
+DEF_MAX_WALKLEN = 8
 DEF_VNUM = 100
+DEF_PNUM = 50
 DEF_TDEV_PROP = 0.1
 DEF_OBSTACLES = 0
 
@@ -69,9 +73,13 @@ def _ld_to_dt(ld:list[dict],clout)->dict[tuple]:
 @_dc
 class GenOptions:
     nroutes: int = DEF_N_ROUTES
+    nwalks: int = DEF_N_WALKS
     minrtlen: int = DEF_MIN_RTLEN
     maxrtlen: int = DEF_MAX_RTLEN
+    minwalklen: int = DEF_MIN_WALKLEN
+    maxwalklen: int = DEF_MAX_WALKLEN
     vnum: int = DEF_VNUM
+    pnum: int = DEF_PNUM
     tdevp: float = DEF_TDEV_PROP
     obstacles: int = DEF_OBSTACLES
 
