@@ -6,8 +6,15 @@ from sumolib.net.node import Node as _Node
 from sumolib.net.edge import Edge as _Edge
 from sumolib.net.lane import Lane as _Lane
 from sumolib.net.connection import Connection as _Conn
+from enum import Enum as _Enum
 
 import traci as _traci
+
+class PedestrianAreaType(_Enum):
+    SIDEWALK = "sidewalk"
+    WALKINGAREA = "walkingarea"
+    CROSSING_NORMAL = "crossing"
+    CROSSING_TLS = "crossing_tls"
 
 
 @_dc
@@ -28,7 +35,7 @@ class MapParser:
     net:_Net
     lm_junctions:list[LaneMergeJunction]
     def __init__(self,netfile_path:str):
-        self.net = _sumolib.net.readNet(netfile_path)
+        self.net = _sumolib.net.readNet(netfile_path, withInternal=True)
         self.__computeLMJunctions()
 
     @staticmethod
@@ -84,6 +91,38 @@ class MapParser:
 
         # lc is lm if the lc correspond to different outgoing edges after the lane merge junction
         return out_e_from != out_e_to
+    
+    def isPedestrianArea(self,lane_id:str)->tuple[bool,PedestrianAreaType|None]:
+        """
+        Check if the given lane belongs to a pedestrian area, that is either
+        - a "sidewalk" restricted lane
+        - a lane from a "walkingarea" edge
+        - a lane from a "crossing" edge
+        """
+        if lane_id is None:
+            raise ValueError("lane_id cannot be None")
+        lane: _Lane = self.net.getLane(lane_id)
+        if lane is None:
+            raise ValueError(f"lane with id {lane_id} not found in the network")
+        edge: _Edge = lane.getEdge()
+        
+        if edge.getFunction() == "crossing":
+            trueConn: _Conn = lane.getConnection()
+            if trueConn is None:
+                raise ValueError(f"lane with id {lane_id} has no connection, cannot determine if crossing with tls")
+            tlsind = trueConn.getTLLinkIndex()
+            if tlsind is not None and tlsind >= 0:
+                return True, PedestrianAreaType.CROSSING_TLS
+            else:
+                return True, PedestrianAreaType.CROSSING_NORMAL
+        elif edge.getFunction() == "walkingarea":
+            return True, PedestrianAreaType.WALKINGAREA
+        else:
+            allowed = lane.getPermissions()
+            if allowed is not None and len(allowed) == 1 and "pedestrian" in allowed:
+                return True, PedestrianAreaType.PEDESTRIAN
+            else:
+                return False, None
 
 
     # def getNodeByEdges(self,incoming_edge_id:str,outgoing_edge_id:str)->_Node|None:

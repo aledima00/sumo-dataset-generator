@@ -5,7 +5,7 @@ import traci as _traci
 from enum import Enum as _EN
 from pathlib import Path as _Path
 from .labels import LabelsEnum as _LE, MultiLabel as _MLB
-from .map import MapParser as _MP
+from .map import MapParser as _MP, PedestrianAreaType as _PAT
 from .sumocfg import SumoCfg as _SCFG
 from colorama import Fore as _Fore, Style as _Style
 import re as _re
@@ -194,6 +194,28 @@ class TraciController:
                         
     def __checkTurn(self,lb):
         return True
+                
+    def __checkPedestrianInRoad(self,lb):
+        if lb.checkLabel(_LE.PEDESTRIAN_IN_ROAD):
+            return True
+        for pid in _traci.person.getIDList():
+            laneid=_traci.person.getLaneID(pid)
+            is_pedestrian_area, area_type = self.map_parser.isPedestrianArea(laneid)
+            if not is_pedestrian_area:
+                lb.setLabel(_LE.PEDESTRIAN_IN_ROAD)
+                tlog(f"Detected Pedestrian {pid} in road lane {laneid}")
+                return True
+            elif area_type==_PAT.CROSSING_TLS:
+                # if crossing with tls, further check if it has right of way
+                links = _traci.lane.getLinks(laneid, extended=True)
+                for (succLane, hasPrio, isOpen, hasFoe, *_) in links:
+                    # isOpen=True => semaforo verde o priorità libera
+                    # hasFoe=False => nessuna lane conflittuale con precedenza
+                    if (not isOpen) or hasFoe:
+                        lb.setLabel(_LE.PEDESTRIAN_IN_ROAD)
+                        tlog(f"Detected Pedestrian {pid} in crossing with traffic light lane {laneid} without right of way")
+                        return True
+                    
                         
     def __checkFrame(self,lb):
         self.__checkCollision(lb)
@@ -203,6 +225,7 @@ class TraciController:
         self.__checkLCLM(lb)
         self.__checkOvertake(lb)
         self.__checkTurn(lb)
+        self.__checkPedestrianInRoad(lb)
                         
     
 
