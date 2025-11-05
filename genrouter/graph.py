@@ -49,6 +49,12 @@ class RouteRepresentation:
         edge_str = ' '.join(self.edges)
         return f'<route id="{self.id}" edges="{edge_str}"/>'
 
+class WalkRepresentation(RouteRepresentation):
+    def __init__(self,*,start_edge_id:str):
+        super().__init__(id=None, start_edge_id=start_edge_id)
+    def xml(self,*,fromTo=False)->str:
+        return f'<walk from="{self.edges[0]}" to="{self.edges[-1]}"/>' if fromTo else f'<walk edges="{" ".join(self.edges)}"/>'
+
 
 class GraphRepresentation:
     __edges:set[str]
@@ -106,7 +112,7 @@ class GraphRepresentation:
             for c in j.connections:
                 print(f"      From edge {c.from_edge_id} to edge {c.to_edge_id} via node {c.via_node_id}")
 
-    def __rt_rand_step(self, rt:RouteRepresentation)->RouteRepresentation:
+    def __rt_rand_step(self, rt:RouteRepresentation|WalkRepresentation)->RouteRepresentation|WalkRepresentation:
         last_edge_id = rt.edges[-1]
         to_junction = self.__getToJunction(last_edge_id)
         if to_junction is None:
@@ -125,6 +131,17 @@ class GraphRepresentation:
         for _ in range(n_steps):
             self.__rt_rand_step(rt)
         return rt
+    
+    def randomWalk(self,*,min_steps:int=2, max_steps:int=10, source_edge_ids:set[str]=None)->WalkRepresentation:
+        if source_edge_ids is None or len(source_edge_ids)==0:
+            source_edge_id = _random.choice( list(self.__edges) )
+        else:
+            source_edge_id = _random.choice( list(source_edge_ids) )
+        wk = WalkRepresentation(start_edge_id=source_edge_id)
+        n_steps = _random.randint(min_steps, max_steps)
+        for _ in range(n_steps):
+            self.__rt_rand_step(wk)
+        return wk
 
 
 __all__ = ["GraphRepresentation", "RouteRepresentation", "JunctionRepresentation", "ConnectionRepresentation"]

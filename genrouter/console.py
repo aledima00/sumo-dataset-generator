@@ -70,8 +70,10 @@ def generate(sumocfg_path,time,nroutes,nwalks,step_len,minrtlen,maxrtlen,minwalk
             ("TOTAL SIMULATION TIME (S)", scfg.duration_s),
             ("SIMULATION STEP LENGTH (S)", scfg.step_length_s),
             ("NUM. OF ROUTES", options.nroutes),
+            ("NUM. OF WALKS", options.nwalks),
             ("NUM. OF OBSTACLES", options.obstacles),
             ("NUM. OF VEHICLES", options.vnum),
+            ("NUM. OF PEDESTRIANS", options.pnum),
             ("NUM. OF UNIQUE VTYPEs", generator.num_used_vtypes)
         ]
         _clk.echo(f"{_Fore.GREEN}Generation completed successfully!{_Style.RESET_ALL}"+"".join([f"\n{_Fore.YELLOW}  - {k}{_Style.RESET_ALL}: {v}" for k,v in prints]))

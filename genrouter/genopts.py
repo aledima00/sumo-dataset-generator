@@ -2,6 +2,7 @@ from dataclasses import dataclass as _dc, asdict as _asdict, field as _field
 import yaml as _yaml
 from pathlib import Path as _Path
 from .vehicles import IParams as _IP, VParams as _VP
+from .persons import PersonParams as _PP
 
 # default generation params
 DEF_N_ROUTES = 10
@@ -89,6 +90,7 @@ class GenOptions:
     IndividualParams: list[dict] = _field(default_factory=list)
     ClassParams: list[dict] = _field(default_factory=list)
     ProportionalModifiers: list[dict] = _field(default_factory=list)
+    PersonParams: list[dict] = _field(default_factory=list)
 
     @staticmethod
     def fromYaml(yaml_path:_Path)->'GenOptions':
@@ -118,6 +120,7 @@ class GenOptions:
         _normalize_dict(self.VehicleParams, factory=_VP)
         _normalize_dict(self.IndividualParams,factory=_IP)
         _normalize_dict(self.ClassParams,factory=dict) # to be done
+        _normalize_dict(self.PersonParams,factory=_PP)
     
     def dump(self,yaml_path:_Path):
         options_dict = _asdict(self)
@@ -139,6 +142,8 @@ class GenOptions:
         return _ld_to_dt(self.VehicleParams,_VP)
     def VCLDict(self)->dict:
         return _ld_to_dt(self.ClassParams,str)
+    def PPDict(self)->dict:
+        return _ld_to_dt(self.PersonParams,_PP)
     def PMDict(self)->dict:
         return _ld_to_dt(self.ProportionalModifiers,dict)
 

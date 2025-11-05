@@ -1,5 +1,6 @@
 from .graph import GraphRepresentation as _GR
 from .vehicles import VType as _VT, Vehicle as _VH, VParams as _VP, IParams as _IP
+from .persons import Person as _Person, PType as _PT
 import random as _RND
 from pathlib import Path as _Path
 from .genopts import GenOptions as _GenOptions
@@ -40,17 +41,23 @@ class Generator:
         self.OUTPUT_FILE = OUTPUT_FILE
         self.TIME_HORIZON_S = TIME_HORIZON_S
         self.N_ROUTES = gparams.nroutes
+        self.N_WALKS = gparams.nwalks
         self.MIN_RTLEN = gparams.minrtlen
         self.MAX_RTLEN = gparams.maxrtlen
+        self.MAX_WALKLEN = gparams.maxwalklen
+        self.MIN_WALKLEN = gparams.minwalklen
         self.VNUM = gparams.vnum
+        self.PNUM = gparams.pnum
         self.TDEV = gparams.tdevp * TIME_HORIZON_S
         self.obstacle_num = gparams.obstacles
         self.ip_probabs = gparams.IPDict()
         self.vp_probabs = gparams.VPDict()
         self.vcl_probabs = gparams.VCLDict()
+        self.prs_params = gparams.PPDict()
         self.probabilistic_mod_multipliers = gparams.PMDict()
         self.source_edge_ids = gparams.source_edges
         self.vtypes = self.__gen_vtypes()
+        self.ptypes = self.__gen_ptypes()
         self.graph = graph
         self.num_used_vtypes = 0
     
@@ -62,6 +69,46 @@ class Generator:
                     vtypes.append( (_VT(id=f"{vpn}_{ipn}_{vcln}", vp=vp, ip=ip, vcl=vcl,additional_attributes=additional_attributes), ipp*vpp*vclp))
         return vtypes
     
+    def __gen_ptypes(self):
+        ptypes = []
+        for ppn,(ppp,pp) in self.prs_params.items():
+            ptypes.append( (_PT(id=ppn, pp=pp), ppp) )
+        return ptypes
+    
+    def __gen_vehicles(self,routes):
+        used_vtypes = set()
+        vehicles:list[_VH] = []
+        dpts = [max(_RND.gauss(mu=self.TIME_HORIZON_S*i/(self.VNUM+self.obstacle_num),sigma=self.TDEV),0.0) for i in range(self.VNUM+self.obstacle_num)]
+        for i in range(self.VNUM):
+            vt = Generator.__draw_vtype(self.vtypes)
+            vt = self.apply_random_modificators(vt)
+            used_vtypes.add(vt)
+            rt = _RND.choice(routes)
+            vehicles.append(_VH(f"VEH_{i}", vt.id, rt.id, dpts[i],additional_attributes=additional_attributes))
+
+        for on in range(self.obstacle_num):
+            rt = _RND.choice(routes)
+            vehicles.append(_VH(f"OBS_{on}", ObstacleVtype.id, rt.id, dpts[self.VNUM+on],additional_attributes=additional_attributes))
+
+        vehicles.sort(key=lambda v: v.depart_time)
+
+        return vehicles,used_vtypes
+    
+    def __genPersons(self):
+        walks = [self.graph.randomWalk(min_steps=self.MIN_WALKLEN, max_steps=self.MAX_WALKLEN, source_edge_ids=self.source_edge_ids) for i in range(self.N_WALKS)]
+        persons:list[_Person] = []
+        dpts = [max(_RND.gauss(mu=self.TIME_HORIZON_S*i/self.PNUM,sigma=self.TDEV),0.0) for i in range(self.PNUM)]
+        for i in range(self.PNUM):
+            pt = Generator.__draw_ptype(self.ptypes)
+            persons.append( _Person(id=f"PRS_{i}", depart_time=dpts[i],ptype_id=pt.id) )
+        persons.sort(key=lambda p: p.depart_time)
+        
+        for p in persons:
+            wk = _RND.choice(walks)
+            p.addWalk(wk)
+        return persons
+
+    
     @staticmethod
     def __draw_vtype(vtypes)->_VT:
         r = _RND.random()
@@ -70,6 +117,15 @@ class Generator:
             acc += pp
             if r <= acc:
                 return vt
+            
+    @staticmethod
+    def __draw_ptype(ptypes)->_PT:
+        r = _RND.random()
+        acc = 0.0
+        for pt,pp in ptypes:
+            acc += pp
+            if r <= acc:
+                return pt
     
     @staticmethod
     def __comment(s:str)->str:
@@ -93,22 +149,8 @@ class Generator:
     def generate(self):
 
         routes = [self.graph.randomRoute(route_id=f"RT{i}",min_steps=self.MIN_RTLEN,max_steps=self.MAX_RTLEN,source_edge_ids=self.source_edge_ids) for i in range(self.N_ROUTES)]
-        dts = [max(_RND.gauss(mu=self.TIME_HORIZON_S*i/self.VNUM,sigma=self.TDEV),0.0) for i in range(self.VNUM+self.obstacle_num)]
-        _RND.shuffle(dts)
-        used_vtypes = set()
-        vehicles:list[_VH] = []
-        for i in range(self.VNUM):
-            vt = Generator.__draw_vtype(self.vtypes)
-            vt = self.apply_random_modificators(vt)
-            used_vtypes.add(vt)
-            rt = _RND.choice(routes)
-            vehicles.append(_VH(f"VEH{i}", vt.id, rt.id, dts[i],additional_attributes=additional_attributes))
-
-        for on in range(self.obstacle_num):
-            rt = _RND.choice(routes)
-            vehicles.append(_VH(f"OBS_{on}", ObstacleVtype.id, rt.id, dts[self.VNUM+on],additional_attributes=additional_attributes))
-
-        vehicles.sort(key=lambda v: v.depart_time)
+        vehicles, used_vtypes = self.__gen_vehicles(routes)
+        persons = self.__genPersons()
 
         with open (self.OUTPUT_FILE,'w') as f:
             def wc(s,*,tabs=0):
@@ -124,17 +166,24 @@ class Generator:
                 f.write(f'\t{r.xml()}\n')
             f.write('\n')
 
-            wc("Vehicle Types",tabs=1)
+            wc("Vehicle and Person Types",tabs=1)
             for vt in used_vtypes:
                 f.write(f"\t{vt.xml()}\n")
+            for pt,_ in self.ptypes:
+                f.write(f"\t{pt.xml()}\n")
             f.write('\n')
 
             wc("Obstacle vType",tabs=1)
             f.write(f"\t{ObstacleVtype.xml()}\n\n")
             
-            wc("Vehicles",tabs=1)
-            for v in vehicles:
-                f.write(f"\t{v.xml()}\n")
+            a = vehicles + persons
+            a.sort(key=lambda x: x.depart_time)
+            wc("Vehicles and Pedestrians",tabs=1)
+            for vp in a:
+                if isinstance(vp, _Person):
+                    f.write(f"{vp.xml(tabs=1)}\n")
+                else:
+                    f.write(f"\t{vp.xml()}\n")
             f.write('\n')
 
             f.write('</routes>\n')   
