@@ -14,6 +14,7 @@ _defopts = _GOPTS()
 
 @_clk.command()
 @_clk.argument('sumocfg_path', required=True, type=_clk.Path(exists=True, dir_okay=False), nargs=1)
+@_clk.option('--gparams-yaml-fname', '-Y', 'gparams_fname', type=_clk.Path(exists=True, dir_okay=False, file_okay=True), default=None, help='Path to the YAML file containing generation parameters (default: "./gparams.yaml"). The file contains generation paramters in YAML format. If present, CLI-provided parameters will override the parameters in the file.')
 @_clk.option('--time', type=int, default=None, help=f'Time horizon in seconds (default: from SUMO config file). If specified, will override the one in the SUMO config file.')
 @_clk.option('--route-filename',type=str, default=None, help=f'Output route filename (default: from SUMO config file). If specified, will override the one in the SUMO config file.')
 @_clk.option('--net-filename',type=str, default=None, help=f'Input network filename (default: from SUMO config file). If specified, will override the one in the SUMO config file.')
@@ -28,7 +29,7 @@ _defopts = _GOPTS()
 @_clk.option('--pnum', type=int, default=None, help=f'Number of pedestrians to generate (default: {_defopts.pnum})')
 @_clk.option('--tdevp', type=float, default=None, help=f'Time deviation as proportion of time horizon (default: {_defopts.tdevp})')
 @_clk.option('--obstacles',type=int, default=None,help='Number of obstacle vehicles to generate (default: 0)')
-def generate(sumocfg_path,time,nroutes,nwalks,step_len,minrtlen,maxrtlen,minwalklen,maxwalklen,vnum,pnum,tdevp,route_filename,net_filename,obstacles:int):
+def generate(sumocfg_path,gparams_fname,time,nroutes,nwalks,step_len,minrtlen,maxrtlen,minwalklen,maxwalklen,vnum,pnum,tdevp,route_filename,net_filename,obstacles:int):
 
     try:
         scfg = _SCFG(_Path(sumocfg_path))
@@ -41,7 +42,7 @@ def generate(sumocfg_path,time,nroutes,nwalks,step_len,minrtlen,maxrtlen,minwalk
         scfg.checkReqParams()
         scfg.save()
 
-        yf = _Path(_os.getcwd()).resolve() / "gparams.yaml"
+        yf = _Path(_os.getcwd()).resolve() / "gparams.yaml" if gparams_fname is None else _Path(str(gparams_fname)).resolve()
         yf2 = _Path(_os.getcwd()).resolve()/ "gparams-compiled.yaml"
 
         options = _GOPTS.fromYaml(yf)
@@ -51,7 +52,11 @@ def generate(sumocfg_path,time,nroutes,nwalks,step_len,minrtlen,maxrtlen,minwalk
             maxrtlen=maxrtlen,
             vnum=vnum,
             tdevp=tdevp,
-            obstacles=obstacles
+            obstacles=obstacles,
+            nwalks=nwalks,
+            minwalklen=minwalklen,
+            maxwalklen=maxwalklen,
+            pnum=pnum
         )
         options.dump(yf2)
         _clk.echo(f"{_Fore.CYAN}[generation parameters saved to './{yf.name}']{_Style.RESET_ALL}")
