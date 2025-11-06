@@ -7,11 +7,14 @@ from pathlib import Path as _Path
 from .labels import LabelsEnum as _LE, MultiLabel as _MLB
 from .map import MapParser as _MP, PedestrianAreaType as _PAT
 from .sumocfg import SumoCfg as _SCFG
+from .pack import PackData as _PKD, FrameData as _FD, VehicleData as _VD
 from colorama import Fore as _Fore, Style as _Style
 import re as _re
 import shutil as _sh
 import time as _t
 import numpy as _np
+import pandas as _pd
+from typing import Literal as _Lit
 
 def tlog(val:str):
     _click.echo(f"{_Fore.MAGENTA}[{_traci.simulation.getTime()}] {val}{_Style.RESET_ALL}")
@@ -49,6 +52,8 @@ class TraciController:
     map_parser:_MP
     cfg:_SCFG
 
+    packs_df: _pd.DataFrame
+
     def __init__(self,*,gui:bool,sumo_cfg:_SCFG,step_len:float,frame_pack_size:int,sim_time_s:float,on_collision:CollisionAction,warnings:bool,delay:float=None):
         self.plabels = []
         self.gui = gui
@@ -75,6 +80,7 @@ class TraciController:
         # state
         self.vehs_lanes = dict()
         self.vehs_leaders = dict()
+        self.packs_df = _pd.DataFrame()
 
     @staticmethod
     def __getVehEdge(vid:str)->str:
@@ -228,7 +234,23 @@ class TraciController:
         self.__checkPedestrianInRoad(lb)
                         
     
-
+    @staticmethod
+    def computeFrameData(*,id:int) -> _FD:
+        frame = _FD(id=id)
+        for pid in _traci.person.getIDList():
+            pos = _traci.person.getPosition(pid)
+            speed = _traci.person.getSpeed(pid)
+            angle = _traci.person.getAngle(pid)
+            pdata = _VD(id=pid, position=pos, speed=speed, angle=angle, type="pedestrian")
+            frame.pedestrians.append(pdata)
+        for vid in _traci.vehicle.getIDList():
+            if not str(vid).startswith("OBS_"):
+                pos = _traci.vehicle.getPosition(vid)
+                speed = _traci.vehicle.getSpeed(vid)
+                angle = _traci.vehicle.getAngle(vid)
+                vdata = _VD(id=vid, position=pos, speed=speed, angle=angle, type="vehicle")
+                frame.vehicles.append(vdata)
+        return frame
     
     def run(self):
         _traci.start([
@@ -250,16 +272,22 @@ class TraciController:
 
         for pn in range(self.total_packs):
             lb = _MLB()
+            pack = _PKD(id=pn)
 
             for fn in range(self.frame_pack_size):
                 _traci.simulationStep()
 
                 self.__checkFrame(lb)
 
+                frame_data = self.computeFrameData(id=fn)
+                pack.frames.append(frame_data)
+
+                # end of frame analysis: update and wait for next
                 self.__updateState()
                 if self.delay is not None:
                     _t.sleep(self.delay)
-        
+
+            self.packs_df = _pd.concat([self.packs_df, pack.asPandas()], ignore_index=True)
             self.plabels.append(lb)
         
         _traci.close() 
@@ -268,24 +296,28 @@ class TraciController:
         with open(filepath.resolve(), "w") as fv:
             fv.write("PackId, " + ", ".join([label.name for label in _LE]) + "\n")
             for pn, lb in enumerate(self.plabels):
-                fv.write(f"P{pn}, " + ", ".join(map(lambda x: "1" if x else "0", lb.getExpanded())) + "\n")
+                fv.write(f"{pn}, " + ", ".join(map(lambda x: "1" if x else "0", lb.getExpanded())) + "\n")
 
 
     def dumpEncoded(self, filepath:_Path):
         with open(filepath.resolve(), "w") as fe:
             fe.write("PackId, MLBEncoded\n")
             for pn, lb in enumerate(self.plabels):
-                fe.write(f"P{pn}, {lb.getEncoded()}\n")
+                fe.write(f"{pn}, {lb.getEncoded()}\n")
 
     def dumpVerbose(self, filepath:_Path):
         with open(filepath.resolve(), "w") as fv:
             fv.write("PackId, Labels\n")
             for pn, lb in enumerate(self.plabels):
-                fv.write(f"P{pn}, " + ", ".join(lb.getLabels(short=True)) + "\n")
+                fv.write(f"{pn}, " + ", ".join(lb.getLabels(short=True)) + "\n")
 
-        
-
-
+    def dumpPandasPacks(self, dirpath:_Path, fname:str,*,format:_Lit["csv","parquet"]="csv"):
+        filepath = dirpath / f"{fname}.{format}"
+        match format:
+            case "csv":
+                self.packs_df.to_csv(filepath.resolve(), index=False)
+            case "parquet":
+                self.packs_df.to_parquet(filepath.resolve(), index=False)
 
 @_click.command()
 @_click.option('--gui','-g', is_flag=True, default=False, help='Run SUMO with GUI')
@@ -339,5 +371,7 @@ def runSimulation(gui, no_warnings, step_len, pack_size, sim_time, on_collision,
         controller.dumpVerbose(outdir / "plabels_verbose.csv")
         _click.echo(f"- Verbose labels dumped to {outdir / 'plabels_verbose.csv'}")
 
+    controller.dumpPandasPacks(outdir, "pdata", format="parquet")
+    _click.echo(f"- Pack data dumped to {outdir / 'pdata.parquet'}")
 
 __all__ = ['runSimulation', 'TraciController', 'CollisionAction']
