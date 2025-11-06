@@ -120,7 +120,7 @@ class MapParser:
         else:
             allowed = lane.getPermissions()
             if allowed is not None and len(allowed) == 1 and "pedestrian" in allowed:
-                return True, PedestrianAreaType.PEDESTRIAN
+                return True, PedestrianAreaType.SIDEWALK
             else:
                 return False, None
 
