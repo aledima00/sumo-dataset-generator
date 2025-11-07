@@ -34,6 +34,7 @@ class TraciController:
     sim_time_s:float
     on_collision:CollisionAction
     warnings:bool
+    emergency_insertions:bool
     sumobin:str
     delay:float
     total_steps:int
@@ -54,7 +55,7 @@ class TraciController:
 
     packs_df: _pd.DataFrame
 
-    def __init__(self,*,gui:bool,sumo_cfg:_SCFG,step_len:float,frame_pack_size:int,sim_time_s:float,on_collision:CollisionAction,warnings:bool,delay:float=None):
+    def __init__(self,*,gui:bool,sumo_cfg:_SCFG,step_len:float,frame_pack_size:int,sim_time_s:float,on_collision:CollisionAction,warnings:bool,emergency_insertions:bool,delay:float=None):
         self.plabels = []
         self.gui = gui
         self.cfg = sumo_cfg
@@ -63,6 +64,7 @@ class TraciController:
         self.sim_time_s = sim_time_s
         self.on_collision = on_collision
         self.warnings = warnings
+        self.emergency_insertions = emergency_insertions
         self.delay = delay
 
         self.sumobin = _sumolib.checkBinary('sumo-gui' if gui else 'sumo')
@@ -253,19 +255,23 @@ class TraciController:
         return frame
     
     def run(self):
-        _traci.start([
+        args = [
             self.sumobin,
             "-c", str(self.cfg.sumocfg_file),
             "--collision.action", self.on_collision.value,
-            "--no-warnings", "false" if self.warnings else "true",
-            #"--lateral-resolution", "0.1",
             "--collision.check-junctions", "true",
             "--time-to-teleport", "0",
-            "--emergency-insert", "true",
             "--lanechange.duration", "3.5",
             "--time-to-impatience", "40",
-            "--start"
-        ])
+        ]
+        args.extend(["--no-warnings", "false" if self.warnings else "true"])
+        #args.extend(["--lateral-resolution", "0.1" ])
+
+        if self.emergency_insertions:
+            args.extend(["--emergency-insert", "true"])
+        args.append('--start')
+        _click.echo(f"{_Fore.GREEN}Starting SUMO with command: {' '.join(args)}{_Style.RESET_ALL}")
+        _traci.start(args)
         laneIds = _traci.lane.getIDList()
         self.max_speed_per_lane = {lid: _traci.lane.getMaxSpeed(lid) for lid in laneIds}
         self.baseline_speed_per_lane = self.max_speed_per_lane.copy()
@@ -322,6 +328,7 @@ class TraciController:
 @_click.command()
 @_click.option('--gui','-g', is_flag=True, default=False, help='Run SUMO with GUI')
 @_click.option('--no-warnings', is_flag=True, default=False, help='Suppress SUMO warnings.')
+@_click.option('--no-emergency-insertions', is_flag=True, default=False, help='Disable insertion of emergency vehicles during simulation (default: False).')
 @_click.option('--step-len','-s', type=float, default=0.2, help='Length of each simulation step in seconds (default: 0.2s).')
 @_click.option('--pack-size','-p', type=int, default=20, help='Number of frames in each pack (default: 20).')
 @_click.option('--sim-time','-t', type=float, default=500.0, help='Total simulation time in seconds (default: 500s).')
@@ -330,7 +337,7 @@ class TraciController:
 @_click.option('--outdir', type=_click.Path(file_okay=False, dir_okay=True, writable=True), default=None, help='Output directory for label files (default: ./plabels).')
 @_click.option('--delay', '-d', type=float, default=None, help='Delay in ms between simulation steps (default: no delay).')
 @_click.argument('cfg_path', type=_click.Path(exists=True), nargs=1)
-def runSimulation(gui, no_warnings, step_len, pack_size, sim_time, on_collision, cfg_path, output_mode,outdir, delay):
+def runSimulation(gui, no_warnings, no_emergency_insertions, step_len, pack_size, sim_time, on_collision, cfg_path, output_mode,outdir, delay):
     # match output_mode with regex
     if _re.fullmatch(r'[exv]+', output_mode) is None:
         raise _click.BadParameter("Output mode must be a combination of [e]ncoded, [x]panded, [v]erbose (e.g., 'ex', 'v', 'exv').")
@@ -350,6 +357,7 @@ def runSimulation(gui, no_warnings, step_len, pack_size, sim_time, on_collision,
         sim_time_s=sim_time,
         on_collision=CollisionAction(on_collision),
         warnings = not no_warnings,
+        emergency_insertions = not no_emergency_insertions,
         delay=delay
     )
     controller.run()
