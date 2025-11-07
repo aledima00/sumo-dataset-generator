@@ -48,7 +48,7 @@ class TraciController:
 
     vehs_lanes:dict[str,str]
     vehs_leaders:dict[str,str]
-    vehs_angles:dict[str,float]
+    vehs_lanes_no_junc_intlane:dict[str,float]
 
     map_parser:_MP
     cfg:_SCFG
@@ -81,6 +81,7 @@ class TraciController:
 
         # state
         self.vehs_lanes = dict()
+        self.vehs_lanes_no_junc_intlane = dict()
         self.vehs_leaders = dict()
         self.packs_df = _pd.DataFrame()
 
@@ -113,6 +114,8 @@ class TraciController:
                 leader_id = self.__getRealEdgeLeader(vid)
                 self.vehs_leaders[vid] = leader_id
                 self.vehs_lanes[vid] = lane_id
+                if not self.map_parser.isLaneSpecial(lane_id):
+                    self.vehs_lanes_no_junc_intlane[vid] = lane_id
     
     @staticmethod
     def __checkCollision(lb)->bool:
@@ -201,8 +204,20 @@ class TraciController:
                     return True
                         
     def __checkTurn(self,lb):
-        return True
-                
+        if lb.checkLabel(_LE.TURN_INTENT):
+            return True
+        for vid in _traci.vehicle.getIDList():
+            if not str(vid).startswith("OBS_"):
+                lane_id = _traci.vehicle.getLaneID(vid)
+                prev_lane_id = self.vehs_lanes_no_junc_intlane.get(vid,None)
+                if prev_lane_id is not None and lane_id is not None and lane_id != prev_lane_id and (not self.map_parser.isLaneSpecial(lane_id)):
+                    cont_lane_id = self.map_parser.getContToLaneId(from_lane_id=prev_lane_id)
+                    if cont_lane_id is None or lane_id != cont_lane_id:
+                        # turning detected
+                        lb.setLabel(_LE.TURN_INTENT)
+                        tlog(f"Vehicle {vid} performed turn from lane {prev_lane_id} to {lane_id}.")
+                        return True
+                   
     def __checkPedestrianInRoad(self,lb):
         if lb.checkLabel(_LE.PEDESTRIAN_IN_ROAD):
             return True

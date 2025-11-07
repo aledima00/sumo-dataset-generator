@@ -7,6 +7,8 @@ from sumolib.net.edge import Edge as _Edge
 from sumolib.net.lane import Lane as _Lane
 from sumolib.net.connection import Connection as _Conn
 from enum import Enum as _Enum
+import numpy as _np
+from numpy import linalg as _la
 
 import traci as _traci
 
@@ -74,6 +76,47 @@ class MapParser:
             is_lmj, lmj = self.__isLaneMergeJunction(n)
             if is_lmj:
                 self.lm_junctions.append(lmj)
+
+    @staticmethod
+    def __getLanesAngle(self,from_lane:_Lane,to_lane:_Lane)->float:
+        from_shape = from_lane.getShape()
+        to_shape = to_lane.getShape()
+        v1 = _np.array([from_shape[-1][0]-from_shape[-2][0], from_shape[-1][1]-from_shape[-2][1]])
+        v2 = _np.array([to_shape[1][0]-to_shape[0][0], to_shape[1][1]-to_shape[0][1]])
+        dotprod = _np.dot(v1, v2)
+        norms = _la.norm(v1) * _la.norm(v2)
+        cosangle = dotprod / norms
+        angle_deg = _np.arccos(cosangle) * (180.0 / _np.pi)
+        return angle_deg
+    
+    def isLaneSpecial(self,lane_id:str)->bool:
+        lane: _Lane = self.net.getLane(lane_id)
+        if lane is None:
+            raise ValueError(f"lane with id {lane_id} not found in the network")
+        edge: _Edge = lane.getEdge()
+        return edge.isSpecial()
+
+    def getContToLaneId(self,from_lane_id:str):
+        """
+        Given the arriving lane, returns the outgoing lane with the relative smallest angle, which is assumed to be the continuation of the "main" road.
+        """
+        from_lane = self.net.getLane(from_lane_id)
+        if from_lane is None:
+            return ValueError(f"lane with id {from_lane_id} not found in the network")
+
+        incoming_conns: list[_Conn] = from_lane.getOutgoing()
+        if len(incoming_conns) == 0:
+            return None
+
+        min_angle = 180.0
+        cont_lane: _Lane|None = None
+        for conn in incoming_conns:
+            to_lane: _Lane = conn.getToLane()
+            angle = self.__getLanesAngle(self,from_lane,to_lane)
+            if angle < min_angle:
+                min_angle = angle
+                cont_lane = to_lane
+        return cont_lane.getID() if cont_lane is not None else None
 
     def checkIfLcLm(self,from_lane_id:str,to_lane_id:str)->bool:
 
