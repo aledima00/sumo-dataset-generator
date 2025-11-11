@@ -1,5 +1,6 @@
 from dataclasses import dataclass as _dc, asdict as _asdict, field as _field
 from .graph import WalkRepresentation as _WKRepr
+from .station import StationType as _ST
 
 @_dc
 class PersonParams:
@@ -18,8 +19,12 @@ class PersonParams:
 
 @_dc
 class PType:
-    id: str
+    name: str
     pp: PersonParams = _field(default_factory=PersonParams)    
+
+    @property
+    def id(self) -> str:
+        return f"ST{_ST.PEDESTRIAN.value:03d}_{self.name}"
 
     def xml(self) -> str:
         pp_attrs_str = ' '.join(f'{k}="{v}"' for k, v in _asdict(self.pp).items())

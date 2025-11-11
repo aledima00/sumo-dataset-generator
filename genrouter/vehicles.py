@@ -1,5 +1,5 @@
 from dataclasses import dataclass as _dc, field as _field
-
+from .station import StationType as _ST
 @_dc
 class IParams:
     """
@@ -45,6 +45,7 @@ class IParams:
 
 @_dc
 class VParams:
+    stType: int = _ST.PASSENGER_CAR.value
     accel:float = 2.6
     decel:float = 4.5
     emergency_decel:float = 9.0
@@ -60,11 +61,19 @@ class VParams:
 
 @_dc
 class VType:
-    id:str
+    name:str
     vp:VParams = _field(default_factory=VParams)
     ip:IParams = _field(default_factory=IParams)
     vcl:str = "passenger"
     additional_attributes:dict = _field(default_factory=dict)
+    
+    @property
+    def station_type(self) -> _ST:
+        return _ST(self.vp.stType)
+
+    @property
+    def id(self) -> str:
+        return f"ST{self.station_type.value:03d}_{self.name}"
     def xml(self):
         x = f'<vType id="{self.id}" accel="{self.vp.accel:.4e}" decel="{self.vp.decel:.4e}" emergencyDecel="{self.vp.emergency_decel:.4e}" length="{self.vp.length_m:.4e}" maxSpeed="{self.vp.max_speed:.4e}" vClass="{self.vcl}" guiShape="{self.vp.gui_shape}"'
         for k,v in self.ip.__dict__.items():
@@ -74,6 +83,8 @@ class VType:
         
         x += '/>'
         return x
+    def copy(self):
+        return VType(name=self.name, vp=self.vp, ip=self.ip, vcl=self.vcl, additional_attributes=self.additional_attributes.copy())
     def __str__(self):
         return str(self.id)
     def __repr__(self):

@@ -4,6 +4,7 @@ from .persons import Person as _Person, PType as _PT
 import random as _RND
 from pathlib import Path as _Path
 from .genopts import GenOptions as _GenOptions
+from .station import StationType as _ST
 
 additional_attributes={
     "departPos":"random_free",
@@ -15,8 +16,9 @@ additional_attributes={
 }
 
 ObstacleVtype = _VT(
-    id="OBSTACLE",
+    name="OBSTACLE",
     vp=_VP(
+        stType=_ST.UNSPECIFIED.value,
         accel=0.1,
         decel=0.1,
         emergency_decel=0.1,
@@ -66,13 +68,13 @@ class Generator:
         for ipn,(ipp,ip) in self.ip_probabs.items():
             for vpn,(vpp,vp) in self.vp_probabs.items():
                 for vcln,(vclp,vcl) in self.vcl_probabs.items():
-                    vtypes.append( (_VT(id=f"{vpn}_{ipn}_{vcln}", vp=vp, ip=ip, vcl=vcl,additional_attributes=additional_attributes), ipp*vpp*vclp))
+                    vtypes.append( (_VT(name=f"{vpn}_{ipn}_{vcln}", vp=vp, ip=ip, vcl=vcl,additional_attributes=additional_attributes), ipp*vpp*vclp))
         return vtypes
     
     def __gen_ptypes(self):
         ptypes = []
         for ppn,(ppp,pp) in self.prs_params.items():
-            ptypes.append( (_PT(id=ppn, pp=pp), ppp) )
+            ptypes.append( (_PT(name=ppn, pp=pp), ppp) )
         return ptypes
     
     def __gen_vehicles(self,routes):
@@ -134,7 +136,7 @@ class Generator:
     
         
     def apply_random_modificators(self,vt:_VT)->_VT:
-        nvt = _VT(id=vt.id, vp=vt.vp, ip=vt.ip, vcl=vt.vcl)
+        nvt = vt.copy()
         for modname,moddata in self.probabilistic_mod_multipliers.items():
             p,mods = moddata
             if _RND.random() <= p:
@@ -143,7 +145,7 @@ class Generator:
                         setattr(nvt.vp,attr,getattr(nvt.vp,attr)*mult)
                     elif hasattr(nvt.ip,attr):
                         setattr(nvt.ip,attr,getattr(nvt.ip,attr)*mult)
-                nvt.id += f"_{modname}"
+                nvt.name += f"_{modname}"
         return nvt
     
     def generate(self):
