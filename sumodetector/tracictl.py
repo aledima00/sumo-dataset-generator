@@ -332,13 +332,16 @@ class TraciController:
             for pn, lb in enumerate(self.plabels):
                 fv.write(f"{pn}, " + ", ".join(lb.getLabels(short=True)) + "\n")
 
-    def dumpPandasPacks(self, dirpath:_Path, fname:str,*,format:_Lit["csv","parquet"]="csv"):
+    def dumpPandasPacks(self, dirpath:_Path, fname:str,*,format:_Lit["csv","parquet","npy"]="csv"):
         filepath = dirpath / f"{fname}.{format}"
         match format:
             case "csv":
                 self.packs_df.to_csv(filepath.resolve(), index=False)
             case "parquet":
                 self.packs_df.to_parquet(filepath.resolve(), index=False)
+            case "npy":
+                npy_data = self.packs_df.to_records(index=False)
+                _np.save(filepath.resolve(), npy_data)
 
 @_click.command()
 @_click.option('--gui','-g', is_flag=True, default=False, help='Run SUMO with GUI')
