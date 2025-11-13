@@ -25,6 +25,13 @@ class CollisionAction(_EN):
     NONE = "none"
     REMOVE = "remove"
 
+def getStTypeFromVTypeID(vtype_id:str)->int:
+    match = _re.search(r"^ST(\d+)(_|$)", vtype_id)
+    if match:
+        return int(match.group(1))
+    else:
+        raise ValueError(f"Invalid vType ID format: {vtype_id}")
+
 
 class TraciController:
     plabels:list[_MLB]
@@ -258,14 +265,16 @@ class TraciController:
             pos = _traci.person.getPosition(pid)
             speed = _traci.person.getSpeed(pid)
             angle = _traci.person.getAngle(pid)
-            pdata = _VD(id=pid, position=pos, speed=speed, angle=angle, type="pedestrian")
+            vtid = _traci.person.getTypeID(pid)
+            pdata = _VD(id=pid, stType=getStTypeFromVTypeID(vtid), position=pos, speed=speed, angle=angle)
             frame.pedestrians.append(pdata)
         for vid in _traci.vehicle.getIDList():
             if not str(vid).startswith("OBS_"):
                 pos = _traci.vehicle.getPosition(vid)
                 speed = _traci.vehicle.getSpeed(vid)
                 angle = _traci.vehicle.getAngle(vid)
-                vdata = _VD(id=vid, position=pos, speed=speed, angle=angle, type="vehicle")
+                vtid = _traci.vehicle.getTypeID(vid)
+                vdata = _VD(id=vid,stType=getStTypeFromVTypeID(vtid), position=pos, speed=speed, angle=angle)
                 frame.vehicles.append(vdata)
         return frame
     
@@ -285,7 +294,7 @@ class TraciController:
         if self.emergency_insertions:
             args.extend(["--emergency-insert", "true"])
         args.append('--start')
-        _click.echo(f"{_Fore.GREEN}Starting SUMO with command: {' '.join(args)}{_Style.RESET_ALL}")
+        _click.echo(f"{_Fore.GREEN}Starting SUMO (with command: {' '.join(args)}){_Style.RESET_ALL}")
         _traci.start(args)
         laneIds = _traci.lane.getIDList()
         self.max_speed_per_lane = {lid: _traci.lane.getMaxSpeed(lid) for lid in laneIds}

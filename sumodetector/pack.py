@@ -7,19 +7,21 @@ from typing import Literal as _Lit
 @_dc
 class VehicleData:
     id: str
+    stType: int
     position: tuple[float,float] = _field(default_factory=lambda: (0.0,0.0))
     speed: float = 0.0
     angle: float = 0.0
-    type: _Lit["vehicle","pedestrian"] = "vehicle"
     def asPandas(self) -> _pd.DataFrame:
-        return _pd.DataFrame([{
+        df = _pd.DataFrame([{
             "VehicleId": self.id,
+            "stType": self.stType,
             "X": self.position[0],
             "Y": self.position[1],
             "Speed": self.speed,
             "Angle": self.angle,
-            "Type": self.type
         }])
+        df["stType"] = df["stType"].astype("uint8")
+        return df
 
 
 @_dc
@@ -32,6 +34,7 @@ class FrameData:
         vehs_df = _pd.concat([vd.asPandas() for vd in self.vehicles], ignore_index=True) if len(self.vehicles) > 0 else _pd.DataFrame()
         df = _pd.concat([peds_df, vehs_df], ignore_index=True)
         df["FrameId"] = self.id
+        df["FrameId"] = df["FrameId"].astype("uint8")
         return df
     
 
@@ -42,6 +45,7 @@ class PackData:
     def asPandas(self) -> _pd.DataFrame:
         df = _pd.concat([fd.asPandas() for fd in self.frames], ignore_index=True)
         df["PackId"] = self.id
+        df["PackId"] = df["PackId"].astype("uint32")
         return df
     
 __all__ = ['VehicleData', 'FrameData', 'PackData']
