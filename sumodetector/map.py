@@ -150,6 +150,7 @@ class MapParser:
         edge: _Edge = lane.getEdge()
         
         if edge.getFunction() == "crossing":
+            return True, PedestrianAreaType.CROSSING_NORMAL
             trueConn: _Conn = lane.getConnection()
             if trueConn is None:
                 raise ValueError(f"lane with id {lane_id} has no connection, cannot determine if crossing with tls")
