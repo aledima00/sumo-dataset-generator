@@ -26,7 +26,9 @@ shorts ={
 
 class MultiLabel:
     __encoded_labels:int
-    def __init__(self):
+    __active_labels:set[LabelsEnum]
+    def __init__(self,active_labels:set[LabelsEnum]=None):
+        self.__active_labels = active_labels if active_labels is not None else set(label for label in LabelsEnum)
         self.__encoded_labels = 0
 
     def setLabel(self,label:LabelsEnum,value:bool=True):
@@ -41,14 +43,14 @@ class MultiLabel:
         for label in LabelsEnum:
             expanded.append((self.__encoded_labels & (1 << label.value)) != 0)
         return expanded
-    def getLabels(self,short:False)->set[str]:
+    def getLabels(self,short:False)->set[LabelsEnum|str]:
         labels = set()
         for label in LabelsEnum:
             if (self.__encoded_labels & (1 << label.value)) != 0:
                 labels.add(label if not short else shorts[label])
         return labels
-    def checkLabel(self,label:LabelsEnum)->bool:
-        return (self.__encoded_labels & (1 << label.value)) != 0
+    def checkLabelDone(self,label:LabelsEnum)->bool:
+        return ((label not in self.__active_labels) or ((self.__encoded_labels & (1 << label.value)) != 0))
     def asPandas(self, packID:int) -> _pd.DataFrame:
         return _pd.DataFrame([{
             "PackId": packID,
@@ -57,5 +59,7 @@ class MultiLabel:
             "PackId": "uint32",
             "MLBEncoded" : "uint8"
         })
+    def clear(self):
+        self.__encoded_labels = 0
     
 __all__ = ['LabelsEnum','MultiLabel']

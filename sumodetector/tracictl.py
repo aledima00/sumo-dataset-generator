@@ -16,7 +16,17 @@ import numpy as _np
 import pandas as _pd
 from typing import Literal as _Lit
 
-ACTIVE_LABELS = [0,1,2,3,4,5,6,7,8]
+ACTIVE_LABELS = {
+    _LE.LANE_CHANGE,
+    _LE.LANE_MERGE,
+    _LE.OVERTAKE,
+    _LE.BRAKING,
+    _LE.TURN_INTENT,
+    _LE.COLLISION,
+    _LE.PEDESTRIAN_IN_ROAD,
+    _LE.OBSTACLE_IN_ROAD,
+    _LE.TRAFFIC_JAM
+}
 
 def tlog(val:str):
     _click.echo(f"{_Fore.MAGENTA}[{_traci.simulation.getTime()}] {val}{_Style.RESET_ALL}")
@@ -129,8 +139,8 @@ class TraciController:
                     self.vehs_lanes_no_junc_intlane[vid] = lane_id
     
     @staticmethod
-    def __checkCollision(lb)->bool:
-        if lb.checkLabel(_LE.COLLISION):
+    def __checkCollision(lb:_MLB)->bool:
+        if lb.checkLabelDone(_LE.COLLISION):
             return True
         clist = _traci.simulation.getCollidingVehiclesIDList()
         if len(clist)>0:
@@ -138,8 +148,8 @@ class TraciController:
             lb.setLabel(_LE.COLLISION)
             return True
 
-    def __checkBraking(self,lb)->bool:
-        if lb.checkLabel(_LE.BRAKING):
+    def __checkBraking(self,lb:_MLB)->bool:
+        if lb.checkLabelDone(_LE.BRAKING):
             return True
         vbs = []
         for vid in _traci.vehicle.getIDList():
@@ -153,8 +163,8 @@ class TraciController:
                     return True
             
     @staticmethod
-    def __checkObstacles(lb):
-        if lb.checkLabel(_LE.OBSTACLE_IN_ROAD):
+    def __checkObstacles(lb:_MLB):
+        if lb.checkLabelDone(_LE.OBSTACLE_IN_ROAD):
             return True
         for vid in _traci.vehicle.getIDList():
             if str(vid).startswith("OBS_"):
@@ -162,8 +172,8 @@ class TraciController:
                 lb.setLabel(_LE.OBSTACLE_IN_ROAD)
                 return 
             
-    def __checkTrafficJam(self,lb):
-        if lb.checkLabel(_LE.TRAFFIC_JAM):
+    def __checkTrafficJam(self,lb:_MLB):
+        if lb.checkLabelDone(_LE.TRAFFIC_JAM):
             return True
         for laneId in self.max_speed_per_lane.keys():
 
@@ -181,7 +191,7 @@ class TraciController:
         
 
     def __checkLCLM(self,lb:_MLB):
-        if lb.checkLabel(_LE.LANE_CHANGE) and lb.checkLabel(_LE.LANE_MERGE):
+        if lb.checkLabelDone(_LE.LANE_CHANGE) and lb.checkLabelDone(_LE.LANE_MERGE):
             return True
         for vid in _traci.vehicle.getIDList():
             if not str(vid).startswith("OBS_"):
@@ -192,18 +202,18 @@ class TraciController:
                     e2id = _traci.lane.getEdgeID(lane_id)
                     if e1id == e2id:
                         # generic lc situation
-                        if not lb.checkLabel(_LE.LANE_CHANGE):
+                        if not lb.checkLabelDone(_LE.LANE_CHANGE):
                             lb.setLabel(_LE.LANE_CHANGE)
                             tlog(f"Vehicle {vid} changed lane from {prev_lane_id} to {lane_id} on edge {e1id}.")
-                        if not lb.checkLabel(_LE.LANE_MERGE):
+                        if not lb.checkLabelDone(_LE.LANE_MERGE):
                             is_lc_lm = self.map_parser.checkIfLcLm(prev_lane_id,lane_id)
                             if is_lc_lm:
                                 lb.setLabel(_LE.LANE_MERGE)
                                 tlog(f"Vehicle {vid} performed Lane Change corresponding to Lane Merge from lane {prev_lane_id} to {lane_id} on edge {e1id}.")
                         return True
                     
-    def __checkOvertake(self,lb):
-        if lb.checkLabel(_LE.OVERTAKE):
+    def __checkOvertake(self,lb:_MLB):
+        if lb.checkLabelDone(_LE.OVERTAKE):
             return True
         for vid in _traci.vehicle.getIDList():
             if not str(vid).startswith("OBS_"):
@@ -214,8 +224,8 @@ class TraciController:
                     tlog(f"Detected Overtake of Vehicle {vid} on {old_leader_id}")
                     return True
                         
-    def __checkTurn(self,lb):
-        if lb.checkLabel(_LE.TURN_INTENT):
+    def __checkTurn(self,lb:_MLB):
+        if lb.checkLabelDone(_LE.TURN_INTENT):
             return True
         for vid in _traci.vehicle.getIDList():
             if not str(vid).startswith("OBS_"):
@@ -229,8 +239,8 @@ class TraciController:
                         tlog(f"Vehicle {vid} performed turn from lane {prev_lane_id} to {lane_id}.")
                         return True
                    
-    def __checkPedestrianInRoad(self,lb):
-        if lb.checkLabel(_LE.PEDESTRIAN_IN_ROAD):
+    def __checkPedestrianInRoad(self,lb:_MLB):
+        if lb.checkLabelDone(_LE.PEDESTRIAN_IN_ROAD):
             return True
         for pid in _traci.person.getIDList():
             laneid=_traci.person.getLaneID(pid)
@@ -251,23 +261,15 @@ class TraciController:
                         return True
                     
                         
-    def __checkFrame(self,lb):
-        if _LE.COLLISION.value in ACTIVE_LABELS:
-            self.__checkCollision(lb)
-        if _LE.BRAKING.value in ACTIVE_LABELS:
-            self.__checkBraking(lb)
-        if _LE.OBSTACLE_IN_ROAD.value in ACTIVE_LABELS:
-            self.__checkObstacles(lb)
-        if _LE.TRAFFIC_JAM.value in ACTIVE_LABELS:
-            self.__checkTrafficJam(lb)
-        if _LE.LANE_CHANGE.value in ACTIVE_LABELS or _LE.LANE_MERGE in ACTIVE_LABELS:
-            self.__checkLCLM(lb)
-        if _LE.OVERTAKE.value in ACTIVE_LABELS:
-            self.__checkOvertake(lb)
-        if _LE.TURN_INTENT.value in ACTIVE_LABELS:
-            self.__checkTurn(lb)
-        if _LE.PEDESTRIAN_IN_ROAD.value in ACTIVE_LABELS:
-            self.__checkPedestrianInRoad(lb)
+    def __checkFrame(self,lb:_MLB):
+        self.__checkLCLM(lb)
+        self.__checkOvertake(lb)
+        self.__checkBraking(lb)
+        self.__checkTurn(lb)
+        self.__checkCollision(lb)
+        self.__checkPedestrianInRoad(lb)
+        self.__checkObstacles(lb)
+        self.__checkTrafficJam(lb)
 
     
     def tryAddVInfo(self,vid:str,*,w:float=None,l:float=None,stType:int,pedestrian:bool=False):
@@ -331,9 +333,10 @@ class TraciController:
         laneIds = _traci.lane.getIDList()
         self.max_speed_per_lane = {lid: _traci.lane.getMaxSpeed(lid) for lid in laneIds}
         self.baseline_speed_per_lane = self.max_speed_per_lane.copy()
+        lb = _MLB(active_labels=ACTIVE_LABELS)
 
         for pn in range(self.total_packs):
-            lb = _MLB()
+            lb.clear()
             pack = _PKD(id=pn)
 
             for fn in range(self.frame_pack_size):
@@ -403,13 +406,13 @@ class TraciController:
 @_click.option('--pack-size','-p', type=int, default=20, help='Number of frames in each pack (default: 20).')
 @_click.option('--sim-time','-t', type=float, default=500.0, help='Total simulation time in seconds (default: 500s).')
 @_click.option('--on-collision', type=_click.Choice([e.value for e in CollisionAction]), default=CollisionAction.TELEPORT.value, help='Action to take on collision (default: remove).')
-@_click.option('-om', '--output-mode', 'output_mode', type=str, default='e', help='Output mode for pack labels: combination of [e]ncoded, [x]panded, [v]erbose (default: [e]).')
+@_click.option('-ll', '--labels-log', 'labels_log', type=str, default='', help='Additional output in human-readable format for labels, providing format of output as combination of [e]ncoded, [x]panded, [v]erbose (default: No output).')
 @_click.option('--outdir', type=_click.Path(file_okay=False, dir_okay=True, writable=True), default=None, help='Output directory for label files (default: ./plabels).')
 @_click.option('--delay', '-d', type=float, default=None, help='Delay in ms between simulation steps (default: no delay).')
 @_click.argument('cfg_path', type=_click.Path(exists=True), nargs=1)
-def runSimulation(gui, no_warnings, no_emergency_insertions, step_len, pack_size, sim_time, on_collision, cfg_path, output_mode,outdir, delay):
-    # match output_mode with regex
-    if _re.fullmatch(r'[exv]+', output_mode) is None:
+def runSimulation(gui, no_warnings, no_emergency_insertions, step_len, pack_size, sim_time, on_collision, cfg_path, labels_log,outdir, delay):
+    # match labels_log with regex
+    if _re.fullmatch(r'[exv]*', labels_log) is None:
         raise _click.BadParameter("Output mode must be a combination of [e]ncoded, [x]panded, [v]erbose (e.g., 'ex', 'v', 'exv').")
     
     sumo_cfg = _SCFG(_Path(cfg_path))
@@ -439,13 +442,13 @@ def runSimulation(gui, no_warnings, no_emergency_insertions, step_len, pack_size
     if outdir.exists():
         _sh.rmtree(outdir)
     outdir.mkdir(parents=True, exist_ok=True)
-    if 'e' in output_mode:
+    if 'e' in labels_log:
         controller.dumpEncoded(outdir / "plabels_encoded.csv")
         _click.echo(f"- Encoded labels dumped to {outdir / 'plabels_encoded.csv'}")
-    if 'x' in output_mode:
+    if 'x' in labels_log:
         controller.dumpExpanded(outdir / "plabels_expanded.csv")
         _click.echo(f"- Expanded labels dumped to {outdir / 'plabels_expanded.csv'}")
-    if 'v' in output_mode:
+    if 'v' in labels_log:
         controller.dumpVerbose(outdir / "plabels_verbose.csv")
         _click.echo(f"- Verbose labels dumped to {outdir / 'plabels_verbose.csv'}")
 
