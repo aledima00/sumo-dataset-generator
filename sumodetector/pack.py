@@ -2,25 +2,56 @@ from dataclasses import dataclass as _dc, field as _field
 import pandas as _pd
 from typing import Literal as _Lit
 
+@_dc
+class VInfo:
+    id: str
+    stType: int
+    width: float = 0.0
+    length: float = 0.0
+    
+    def asPandas(self) -> _pd.DataFrame:
+        return _pd.DataFrame([{
+            "VehicleId": self.id,
+            "width": self.width,
+            "length": self.length,
+            "stType": self.stType
+        }]).astype({
+            "VehicleId": "string",
+            "width": "float32",
+            "length": "float32",
+            "stType": "uint8"
+        })
+    
+@_dc
+class PInfo:
+    id: str
+    stType: int
+    
+    def asPandas(self) -> _pd.DataFrame:
+        return _pd.DataFrame([{
+            "VehicleId": self.id,
+            "stType": self.stType
+        }]).astype({
+            "VehicleId": "string",
+            "stType": "uint8"
+        })
+
 
 
 @_dc
 class VehicleData:
     id: str
-    stType: int
     position: tuple[float,float] = _field(default_factory=lambda: (0.0,0.0))
     speed: float = 0.0
     angle: float = 0.0
     def asPandas(self) -> _pd.DataFrame:
         df = _pd.DataFrame([{
             "VehicleId": self.id,
-            "stType": self.stType,
             "X": self.position[0],
             "Y": self.position[1],
             "Speed": self.speed,
             "Angle": self.angle,
         }])
-        df["stType"] = df["stType"].astype("uint8")
         return df
 
 
@@ -48,4 +79,4 @@ class PackData:
         df["PackId"] = df["PackId"].astype("uint32")
         return df
     
-__all__ = ['VehicleData', 'FrameData', 'PackData']
+__all__ = ['VehicleData', 'FrameData', 'PackData', 'VInfo', 'PInfo']

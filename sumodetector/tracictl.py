@@ -7,7 +7,7 @@ from pathlib import Path as _Path
 from .labels import LabelsEnum as _LE, MultiLabel as _MLB
 from .map import MapParser as _MP, PedestrianAreaType as _PAT
 from .sumocfg import SumoCfg as _SCFG
-from .pack import PackData as _PKD, FrameData as _FD, VehicleData as _VD
+from .pack import PackData as _PKD, FrameData as _FD, VehicleData as _VD, VInfo as _VI, PInfo as _PI
 from colorama import Fore as _Fore, Style as _Style
 import re as _re
 import shutil as _sh
@@ -15,6 +15,8 @@ import time as _t
 import numpy as _np
 import pandas as _pd
 from typing import Literal as _Lit
+
+ACTIVE_LABELS = [0,1,2,3,4,5,6,7,8]
 
 def tlog(val:str):
     _click.echo(f"{_Fore.MAGENTA}[{_traci.simulation.getTime()}] {val}{_Style.RESET_ALL}")
@@ -91,6 +93,8 @@ class TraciController:
         self.vehs_lanes_no_junc_intlane = dict()
         self.vehs_leaders = dict()
         self.packs_df = _pd.DataFrame()
+        self.labels_per_pid_df = _pd.DataFrame()
+        self.vinfo_per_vid_df = _pd.DataFrame()
 
     @staticmethod
     def __getVehEdge(vid:str)->str:
@@ -248,25 +252,50 @@ class TraciController:
                     
                         
     def __checkFrame(self,lb):
-        self.__checkCollision(lb)
-        self.__checkBraking(lb)
-        self.__checkObstacles(lb)
-        self.__checkTrafficJam(lb)
-        self.__checkLCLM(lb)
-        self.__checkOvertake(lb)
-        self.__checkTurn(lb)
-        self.__checkPedestrianInRoad(lb)
+        if _LE.COLLISION.value in ACTIVE_LABELS:
+            self.__checkCollision(lb)
+        if _LE.BRAKING.value in ACTIVE_LABELS:
+            self.__checkBraking(lb)
+        if _LE.OBSTACLE_IN_ROAD.value in ACTIVE_LABELS:
+            self.__checkObstacles(lb)
+        if _LE.TRAFFIC_JAM.value in ACTIVE_LABELS:
+            self.__checkTrafficJam(lb)
+        if _LE.LANE_CHANGE.value in ACTIVE_LABELS or _LE.LANE_MERGE in ACTIVE_LABELS:
+            self.__checkLCLM(lb)
+        if _LE.OVERTAKE.value in ACTIVE_LABELS:
+            self.__checkOvertake(lb)
+        if _LE.TURN_INTENT.value in ACTIVE_LABELS:
+            self.__checkTurn(lb)
+        if _LE.PEDESTRIAN_IN_ROAD.value in ACTIVE_LABELS:
+            self.__checkPedestrianInRoad(lb)
+
+    
+    def tryAddVInfo(self,vid:str,*,w:float=None,l:float=None,stType:int,pedestrian:bool=False):
+        if "VehicleId" in self.vinfo_per_vid_df.columns and not self.vinfo_per_vid_df["VehicleId"].empty and vid in self.vinfo_per_vid_df["VehicleId"].values:
+            return False
+        else:
+            if pedestrian:
+                if w is not None or l is not None:
+                    raise ValueError("Pedestrian VInfo cannot have width or length.")
+                df = _PI(id=vid,stType=stType).asPandas()
+            else:
+                if w is None or l is None:
+                    raise ValueError("Vehicle VInfo must have width and length.")
+                df = _VI(id=vid,stType=stType,width=w,length=l).asPandas()
+            self.vinfo_per_vid_df = _pd.concat([self.vinfo_per_vid_df, df], ignore_index=True)
+            return True
+            
                         
     
-    @staticmethod
-    def computeFrameData(*,id:int) -> _FD:
+    def computeFrameData(self,*,id:int) -> _FD:
         frame = _FD(id=id)
         for pid in _traci.person.getIDList():
             pos = _traci.person.getPosition(pid)
             speed = _traci.person.getSpeed(pid)
             angle = _traci.person.getAngle(pid)
             vtid = _traci.person.getTypeID(pid)
-            pdata = _VD(id=pid, stType=getStTypeFromVTypeID(vtid), position=pos, speed=speed, angle=angle)
+            self.tryAddVInfo(pid,stType=getStTypeFromVTypeID(vtid),pedestrian=True)
+            pdata = _VD(id=pid, position=pos, speed=speed, angle=angle)
             frame.pedestrians.append(pdata)
         for vid in _traci.vehicle.getIDList():
             if not str(vid).startswith("OBS_"):
@@ -274,7 +303,10 @@ class TraciController:
                 speed = _traci.vehicle.getSpeed(vid)
                 angle = _traci.vehicle.getAngle(vid)
                 vtid = _traci.vehicle.getTypeID(vid)
-                vdata = _VD(id=vid,stType=getStTypeFromVTypeID(vtid), position=pos, speed=speed, angle=angle)
+                width = _traci.vehicle.getWidth(vid)
+                length = _traci.vehicle.getLength(vid)
+                self.tryAddVInfo(vid,w=width,l=length,stType=getStTypeFromVTypeID(vtid))
+                vdata = _VD(id=vid, position=pos, speed=speed, angle=angle)
                 frame.vehicles.append(vdata)
         return frame
     
@@ -319,6 +351,7 @@ class TraciController:
 
             self.packs_df = _pd.concat([self.packs_df, pack.asPandas()], ignore_index=True)
             self.plabels.append(lb)
+            self.labels_per_pid_df = _pd.concat([self.labels_per_pid_df, lb.asPandas(pn)], ignore_index=True)
         
         _traci.close() 
 
@@ -351,6 +384,16 @@ class TraciController:
             case "npy":
                 npy_data = self.packs_df.to_records(index=False)
                 _np.save(filepath.resolve(), npy_data)
+
+    def dumpParquet(self,dirpath:_Path):
+        tables = {
+            "packs": self.packs_df,
+            "labels": self.labels_per_pid_df,
+            "vinfo": self.vinfo_per_vid_df,
+        }
+        for k,v in tables.items():
+            fname = dirpath.resolve() / f"{k}.parquet"
+            v.to_parquet(fname, index=False)
 
 @_click.command()
 @_click.option('--gui','-g', is_flag=True, default=False, help='Run SUMO with GUI')
@@ -406,7 +449,7 @@ def runSimulation(gui, no_warnings, no_emergency_insertions, step_len, pack_size
         controller.dumpVerbose(outdir / "plabels_verbose.csv")
         _click.echo(f"- Verbose labels dumped to {outdir / 'plabels_verbose.csv'}")
 
-    controller.dumpPandasPacks(outdir, "pdata", format="parquet")
-    _click.echo(f"- Pack data dumped to {outdir / 'pdata.parquet'}")
+    controller.dumpParquet(outdir)
+    _click.echo(f"- All data dumped in parquet format to {outdir}")
 
 __all__ = ['runSimulation', 'TraciController', 'CollisionAction']

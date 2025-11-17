@@ -1,6 +1,7 @@
-from enum import Enum as _EN
+from enum import IntEnum as _IE
+import pandas as _pd
 
-class LabelsEnum(_EN):
+class LabelsEnum(_IE):
     LANE_CHANGE = 0
     LANE_MERGE = 1
     OVERTAKE = 2
@@ -48,5 +49,13 @@ class MultiLabel:
         return labels
     def checkLabel(self,label:LabelsEnum)->bool:
         return (self.__encoded_labels & (1 << label.value)) != 0
+    def asPandas(self, packID:int) -> _pd.DataFrame:
+        return _pd.DataFrame([{
+            "PackId": packID,
+            "MLBEncoded": self.getEncoded()
+        }]).astype({
+            "PackId": "uint32",
+            "MLBEncoded" : "uint8"
+        })
     
 __all__ = ['LabelsEnum','MultiLabel']
