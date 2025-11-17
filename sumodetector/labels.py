@@ -57,7 +57,7 @@ class MultiLabel:
             "MLBEncoded": self.getEncoded()
         }]).astype({
             "PackId": "uint32",
-            "MLBEncoded" : "uint8"
+            "MLBEncoded" : "uint16"
         })
     def clear(self):
         self.__encoded_labels = 0

@@ -51,7 +51,13 @@ class VehicleData:
             "Y": self.position[1],
             "Speed": self.speed,
             "Angle": self.angle,
-        }])
+        }]).astype({
+            "VehicleId": "string",
+            "X": "float32",
+            "Y": "float32",
+            "Speed": "float32",
+            "Angle": "float32"
+        })
         return df
 
 
