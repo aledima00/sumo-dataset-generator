@@ -10,11 +10,12 @@ from .sumocfg import SumoCfg as _SCFG
 from .pack import PackData as _PKD, FrameData as _FD, VehicleData as _VD, VInfo as _VI, PInfo as _PI
 from colorama import Fore as _Fore, Style as _Style
 import re as _re
-import shutil as _sh
+from shutil import rmtree as _rmrf
 import time as _t
 import numpy as _np
 import pandas as _pd
 from typing import Literal as _Lit
+import tarfile as _tarfile
 
 ACTIVE_LABELS = {
     _LE.LANE_CHANGE,
@@ -398,6 +399,13 @@ class TraciController:
             fname = dirpath.resolve() / f"{k}.parquet"
             v.to_parquet(fname, index=False)
 
+def tar(src_folder:_Path):
+    if not src_folder.is_dir():
+        raise ValueError(f"Source folder '{src_folder}' is not a directory")
+    tarpath = src_folder.with_suffix('.tar')
+    with _tarfile.open(tarpath, "w") as tar:
+        tar.add(src_folder, arcname="data")
+
 @_click.command()
 @_click.option('--gui','-g', is_flag=True, default=False, help='Run SUMO with GUI')
 @_click.option('--no-warnings', is_flag=True, default=False, help='Suppress SUMO warnings.')
@@ -409,8 +417,9 @@ class TraciController:
 @_click.option('-ll', '--labels-log', 'labels_log', type=str, default='', help='Additional output in human-readable format for labels, providing format of output as combination of [e]ncoded, [x]panded, [v]erbose (default: No output).')
 @_click.option('--outdir', type=_click.Path(file_okay=False, dir_okay=True, writable=True), default=None, help='Output directory for label files (default: ./plabels).')
 @_click.option('--delay', '-d', type=float, default=None, help='Delay in ms between simulation steps (default: no delay).')
+@_click.option('--tar','tar_opt', is_flag=True, default=False, help='Create a tar archive of the output directory after simulation. No need for .gz compression since files are parquet format.')
 @_click.argument('cfg_path', type=_click.Path(exists=True), nargs=1)
-def runSimulation(gui, no_warnings, no_emergency_insertions, step_len, pack_size, sim_time, on_collision, cfg_path, labels_log,outdir, delay):
+def runSimulation(gui, no_warnings, no_emergency_insertions, step_len, pack_size, sim_time, on_collision, cfg_path, labels_log,outdir, delay, tar_opt):
     # match labels_log with regex
     if _re.fullmatch(r'[exv]*', labels_log) is None:
         raise _click.BadParameter("Output mode must be a combination of [e]ncoded, [x]panded, [v]erbose (e.g., 'ex', 'v', 'exv').")
@@ -438,9 +447,11 @@ def runSimulation(gui, no_warnings, no_emergency_insertions, step_len, pack_size
     _click.echo(f"Total Packs Analyzed: {len(controller.plabels)}")
     _click.echo(f"Resulting Labels:")
 
-    outdir = _Path(outdir) if outdir is not None else (_Path.cwd() / "plabels")
+    outdir = _Path(outdir) if outdir is not None else (_Path.cwd() / "out" / "out")
     if outdir.exists():
-        _sh.rmtree(outdir)
+        _rmrf(outdir)
+    if outdir.with_suffix('.tar').exists():
+        outdir.with_suffix('.tar').unlink()
     outdir.mkdir(parents=True, exist_ok=True)
     if 'e' in labels_log:
         controller.dumpEncoded(outdir / "plabels_encoded.csv")
@@ -454,5 +465,12 @@ def runSimulation(gui, no_warnings, no_emergency_insertions, step_len, pack_size
 
     controller.dumpParquet(outdir)
     _click.echo(f"- All data dumped in parquet format to {outdir}")
+
+    if tar_opt:
+        tar(outdir.resolve())
+        _click.echo(f"- Output directory archived to {outdir.with_suffix('.tar')}")
+        _rmrf(outdir.resolve())
+
+        
 
 __all__ = ['runSimulation', 'TraciController', 'CollisionAction']
