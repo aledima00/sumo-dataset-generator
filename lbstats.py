@@ -27,9 +27,9 @@ def analyze_labels(parquet_path: Path):
         ratio = count / total_rows if total_rows > 0 else None
                 
         if ratio is not None:
-            print(f"{label.name:<25} | {count:<10} | {ratio:.4f}")
+            print(f"{label.name:<25} | {count:<10} | {ratio if count>0 else '-':<10}")
         else:
-            print(f"{label.name:<25} | {count:<10} | {'N/A':<10}")
+            print(f"{label.name:<25} | {count:<10} | {'NaN (/0)':<10}")
 
 
 @click.command()
