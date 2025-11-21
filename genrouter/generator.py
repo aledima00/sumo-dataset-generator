@@ -81,6 +81,7 @@ class Generator:
         used_vtypes = set()
         vehicles:list[_VH] = []
         dpts = [max(_RND.gauss(mu=self.TIME_HORIZON_S*i/(self.VNUM+self.obstacle_num),sigma=self.TDEV),0.0) for i in range(self.VNUM+self.obstacle_num)]
+        _RND.shuffle(dpts)
         for i in range(self.VNUM):
             vt = Generator.__draw_vtype(self.vtypes)
             vt = self.apply_random_modificators(vt)
@@ -90,6 +91,7 @@ class Generator:
 
         for on in range(self.obstacle_num):
             rt = _RND.choice(routes)
+            print(f"TIME OF OBSTACLE {on}: {dpts[self.VNUM+on]}")
             vehicles.append(_VH(f"OBS_{on}", ObstacleVtype.id, rt.id, dpts[self.VNUM+on],additional_attributes=additional_attributes))
 
         vehicles.sort(key=lambda v: v.depart_time)
