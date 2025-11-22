@@ -13,8 +13,8 @@ def _shortenPath(p:_Path)->str:
 _defopts = _GOPTS()
 
 @_clk.command()
-@_clk.argument('sumocfg_path', required=True, type=_clk.Path(exists=True, dir_okay=False), nargs=1)
-@_clk.option('--gparams-yaml-fname', '-Y', 'gparams_fname', type=_clk.Path(exists=True, dir_okay=False, file_okay=True), default=None, help='Path to the YAML file containing generation parameters (default: "./gparams.yaml"). The file contains generation paramters in YAML format. If present, CLI-provided parameters will override the parameters in the file.')
+@_clk.option('-P', '--sumocfg-path', required=True, type=_clk.Path(exists=True, dir_okay=False))
+@_clk.option('--gparams-yaml-fname', '-Y', 'gparams_fname', type=_clk.Path(exists=True, dir_okay=False, file_okay=True), default=None, help='Path to the YAML file containing generation parameters (default: in sumodir). The file contains generation paramters in YAML format. If present, CLI-provided parameters will override the parameters in the file.')
 @_clk.option('--time', type=int, default=None, help=f'Time horizon in seconds (default: from SUMO config file). If specified, will override the one in the SUMO config file.')
 @_clk.option('--route-filename',type=str, default=None, help=f'Output route filename (default: from SUMO config file). If specified, will override the one in the SUMO config file.')
 @_clk.option('--net-filename',type=str, default=None, help=f'Input network filename (default: from SUMO config file). If specified, will override the one in the SUMO config file.')
@@ -32,21 +32,15 @@ _defopts = _GOPTS()
 def generate(sumocfg_path,gparams_fname,time,nroutes,nwalks,step_len,minrtlen,maxrtlen,minwalklen,maxwalklen,vnum,pnum,tdevp,route_filename,net_filename,obstacles:int):
 
     try:
-        scfg = _SCFG(_Path(sumocfg_path))
-        scfg.overwrite(
-            time=time,
-            route_filename=route_filename,
-            net_filename=net_filename,
-            step_len=step_len
-        )
-        scfg.checkReqParams()
-        scfg.save()
+        sumodir = _Path(sumocfg_path).resolve().parent
 
-        yf = _Path(_os.getcwd()).resolve() / "gparams.yaml" if gparams_fname is None else _Path(str(gparams_fname)).resolve()
-        yf2 = _Path(_os.getcwd()).resolve()/ "gparams-compiled.yaml"
+        yf = sumodir / "gparams.yaml" if gparams_fname is None else _Path(str(gparams_fname)).resolve()
+        yf2 = sumodir / "gparams-compiled.yaml"
 
         options = _GOPTS.fromYaml(yf)
         options.overwriteWith(
+            time=time,
+            steplen=step_len,
             nroutes=nroutes,
             minrtlen=minrtlen,
             maxrtlen=maxrtlen,
@@ -60,6 +54,17 @@ def generate(sumocfg_path,gparams_fname,time,nroutes,nwalks,step_len,minrtlen,ma
         )
         options.dump(yf2)
         _clk.echo(f"{_Fore.CYAN}[generation parameters saved to './{yf.name}']{_Style.RESET_ALL}")
+
+        scfg = _SCFG(_Path(sumocfg_path))
+        scfg.overwrite(
+            time=options.time,
+            route_filename=route_filename,
+            net_filename=net_filename,
+            step_len=options.steplen
+        )
+        scfg.checkReqParams()
+        scfg.save()
+
         g = _GR(netfile=scfg.net_file)
         generator = _G(
             OUTPUT_FILE=scfg.routes_file,

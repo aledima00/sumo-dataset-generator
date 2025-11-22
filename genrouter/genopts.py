@@ -73,6 +73,8 @@ def _ld_to_dt(ld:list[dict],clout)->dict[tuple]:
 
 @_dc
 class GenOptions:
+    time: int = None
+    steplen: float = None
     nroutes: int = DEF_N_ROUTES
     nwalks: int = DEF_N_WALKS
     minrtlen: int = DEF_MIN_RTLEN
@@ -101,8 +103,8 @@ class GenOptions:
     def loadYaml(self,yaml_path:_Path):
         emptyyml:bool = False
         if (not yaml_path.exists()) or (not yaml_path.is_file()):
-            yaml_path.parent.mkdir(parents=True,exist_ok=True)
-            yaml_path.touch()
+            #yaml_path.parent.mkdir(parents=True,exist_ok=True)
+            #yaml_path.touch()
             emptyyml = True
         else:
             with open(yaml_path,'r') as yf:

@@ -1,4 +1,4 @@
-from dataclasses import dataclass as _dc, field as _field
+from dataclasses import dataclass as _dc, field as _field, asdict as _asdict
 from .station import StationType as _ST
 @_dc
 class IParams:
@@ -41,6 +41,9 @@ class IParams:
     jmAllwayStopWait:float=3.0 # time in seconds to wait at all-way stops
     impatience:float=0.4 # how much [0-1] to get impatient and impede priority vehicles in traffic jams
 
+    def copy(self):
+        return IParams(**_asdict(self))
+
 
 
 @_dc
@@ -57,6 +60,9 @@ class VParams:
     def __post_init__(self):
         if self.kmh:
             self.max_speed = self.max_speed / 3.6  # convert km/h to m/s
+
+    def copy(self):
+        return VParams(**_asdict(self))
 
 
 @_dc
@@ -84,7 +90,7 @@ class VType:
         x += '/>'
         return x
     def copy(self):
-        return VType(name=self.name, vp=self.vp, ip=self.ip, vcl=self.vcl, additional_attributes=self.additional_attributes.copy())
+        return VType(name=self.name, vp=self.vp.copy(), ip=self.ip.copy(), vcl=self.vcl, additional_attributes=self.additional_attributes.copy())
     def __str__(self):
         return str(self.id)
     def __repr__(self):
