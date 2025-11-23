@@ -80,8 +80,7 @@ class Generator:
     def __gen_vehicles(self,routes):
         used_vtypes = set()
         vehicles:list[_VH] = []
-        dpts = [max(_RND.gauss(mu=self.TIME_HORIZON_S*i/(self.VNUM+self.obstacle_num),sigma=self.TDEV),0.0) for i in range(self.VNUM+self.obstacle_num)]
-        _RND.shuffle(dpts)
+        dpts = [_RND.uniform(0.0,self.TIME_HORIZON_S) for i in range(self.VNUM+self.obstacle_num)]
         for i in range(self.VNUM):
             vt = Generator.__draw_vtype(self.vtypes)
             vt = self.apply_random_modificators(vt)
@@ -101,7 +100,8 @@ class Generator:
     def __genPersons(self):
         walks = [self.graph.randomWalk(min_steps=self.MIN_WALKLEN, max_steps=self.MAX_WALKLEN, source_edge_ids=self.source_edge_ids) for i in range(self.N_WALKS)]
         persons:list[_Person] = []
-        dpts = [max(_RND.gauss(mu=self.TIME_HORIZON_S*i/self.PNUM,sigma=self.TDEV),0.0) for i in range(self.PNUM)]
+        dpts = sorted([_RND.uniform(0.0,self.TIME_HORIZON_S) for i in range(self.PNUM)])
+        
         for i in range(self.PNUM):
             pt = Generator.__draw_ptype(self.ptypes)
             persons.append( _Person(id=f"PRS_{i}", depart_time=dpts[i],ptype_id=pt.id) )
