@@ -359,36 +359,6 @@ class TraciController:
         
         _traci.close() 
 
-    def dumpExpanded(self, filepath:_Path):
-        with open(filepath.resolve(), "w") as fv:
-            fv.write("PackId, " + ", ".join([label.name for label in _LE]) + "\n")
-            for pn, lb in enumerate(self.plabels):
-                fv.write(f"{pn}, " + ", ".join(map(lambda x: "1" if x else "0", lb.getExpanded())) + "\n")
-
-
-    def dumpEncoded(self, filepath:_Path):
-        with open(filepath.resolve(), "w") as fe:
-            fe.write("PackId, MLBEncoded\n")
-            for pn, lb in enumerate(self.plabels):
-                fe.write(f"{pn}, {lb.getEncoded()}\n")
-
-    def dumpVerbose(self, filepath:_Path):
-        with open(filepath.resolve(), "w") as fv:
-            fv.write("PackId, Labels\n")
-            for pn, lb in enumerate(self.plabels):
-                fv.write(f"{pn}, " + ", ".join(lb.getLabels(short=True)) + "\n")
-
-    def dumpPandasPacks(self, dirpath:_Path, fname:str,*,format:_Lit["csv","parquet","npy"]="csv"):
-        filepath = dirpath / f"{fname}.{format}"
-        match format:
-            case "csv":
-                self.packs_df.to_csv(filepath.resolve(), index=False)
-            case "parquet":
-                self.packs_df.to_parquet(filepath.resolve(), index=False)
-            case "npy":
-                npy_data = self.packs_df.to_records(index=False)
-                _np.save(filepath.resolve(), npy_data)
-
     def dumpParquet(self,dirpath:_Path):
         tables = {
             "packs": self.packs_df,
@@ -414,15 +384,11 @@ def tar(src_folder:_Path):
 @_click.option('--pack-size','-p', type=int, default=20, help='Number of frames in each pack (default: 20).')
 @_click.option('--sim-time','-t', type=float, default=500.0, help='Total simulation time in seconds (default: 500s).')
 @_click.option('--on-collision', type=_click.Choice([e.value for e in CollisionAction]), default=CollisionAction.TELEPORT.value, help='Action to take on collision (default: remove).')
-@_click.option('-ll', '--labels-log', 'labels_log', type=str, default='', help='Additional output in human-readable format for labels, providing format of output as combination of [e]ncoded, [x]panded, [v]erbose (default: No output).')
 @_click.option('--outdir', type=_click.Path(file_okay=False, dir_okay=True, writable=True), default=None, help='Output directory for label files (default: ./plabels).')
 @_click.option('--delay', '-d', type=float, default=None, help='Delay in ms between simulation steps (default: no delay).')
 @_click.option('--tar','tar_opt', is_flag=True, default=False, help='Create a tar archive of the output directory after simulation. No need for .gz compression since files are parquet format.')
 @_click.argument('cfg_path', type=_click.Path(exists=True), nargs=1)
-def runSimulation(gui, no_warnings, no_emergency_insertions, step_len, pack_size, sim_time, on_collision, cfg_path, labels_log,outdir, delay, tar_opt):
-    # match labels_log with regex
-    if _re.fullmatch(r'[exv]*', labels_log) is None:
-        raise _click.BadParameter("Output mode must be a combination of [e]ncoded, [x]panded, [v]erbose (e.g., 'ex', 'v', 'exv').")
+def runSimulation(gui, no_warnings, no_emergency_insertions, step_len, pack_size, sim_time, on_collision, cfg_path,outdir, delay, tar_opt):
     
     sumo_cfg = _SCFG(_Path(cfg_path))
 
@@ -453,16 +419,6 @@ def runSimulation(gui, no_warnings, no_emergency_insertions, step_len, pack_size
     if outdir.with_suffix('.tar').exists():
         outdir.with_suffix('.tar').unlink()
     outdir.mkdir(parents=True, exist_ok=True)
-    if 'e' in labels_log:
-        controller.dumpEncoded(outdir / "plabels_encoded.csv")
-        _click.echo(f"- Encoded labels dumped to {outdir / 'plabels_encoded.csv'}")
-    if 'x' in labels_log:
-        controller.dumpExpanded(outdir / "plabels_expanded.csv")
-        _click.echo(f"- Expanded labels dumped to {outdir / 'plabels_expanded.csv'}")
-    if 'v' in labels_log:
-        controller.dumpVerbose(outdir / "plabels_verbose.csv")
-        _click.echo(f"- Verbose labels dumped to {outdir / 'plabels_verbose.csv'}")
-
     controller.dumpParquet(outdir)
     _click.echo(f"- All data dumped in parquet format to {outdir}")
 
