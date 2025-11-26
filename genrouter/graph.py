@@ -48,6 +48,9 @@ class RouteRepresentation:
     def xml(self)->str:
         edge_str = ' '.join(self.edges)
         return f'<route id="{self.id}" edges="{edge_str}"/>'
+    
+    def __hash__(self):
+        return hash(self.id)
 
 class WalkRepresentation(RouteRepresentation):
     def __init__(self,*,start_edge_id:str):

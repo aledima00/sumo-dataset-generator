@@ -19,7 +19,7 @@ _defopts = _GOPTS()
 @_clk.option('--route-filename',type=str, default=None, help=f'Output route filename (default: from SUMO config file). If specified, will override the one in the SUMO config file.')
 @_clk.option('--net-filename',type=str, default=None, help=f'Input network filename (default: from SUMO config file). If specified, will override the one in the SUMO config file.')
 @_clk.option('--step-len', type=float, default=None, help='Simulation step length in seconds (default: from SUMO config file). If specified, will override the one in the SUMO config file.')
-@_clk.option('--nroutes',type=int, default=None, help=f'Number of routes to generate (default: {_defopts.nroutes})')
+@_clk.option('--nroutes',type=int, default=None, help=f'Number of routes to generate (default: vnum+obstacles)')
 @_clk.option('--nwalks',type=int, default=None, help=f'Number of walking routes to generate (default: {_defopts.nwalks})')
 @_clk.option('--minrtlen', type=int, default=None, help=f'Minimum route length in number of edges (default: {_defopts.minrtlen})')
 @_clk.option('--maxrtlen', type=int, default=None, help=f'Maximum route length in number of edges (default: {_defopts.maxrtlen})')
@@ -52,6 +52,7 @@ def generate(sumocfg_path,gparams_fname,time,nroutes,nwalks,step_len,minrtlen,ma
             maxwalklen=maxwalklen,
             pnum=pnum
         )
+        options.normalizeNullish()
         options.dump(yf2)
         _clk.echo(f"{_Fore.CYAN}[generation parameters saved to './{yf.name}']{_Style.RESET_ALL}")
 

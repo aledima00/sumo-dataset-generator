@@ -5,7 +5,6 @@ from .vehicles import IParams as _IP, VParams as _VP
 from .persons import PersonParams as _PP
 
 # default generation params
-DEF_N_ROUTES = 10
 DEF_N_WALKS = 20
 DEF_MIN_RTLEN = 10
 DEF_MAX_RTLEN = 20
@@ -75,7 +74,7 @@ def _ld_to_dt(ld:list[dict],clout)->dict[tuple]:
 class GenOptions:
     time: int = None
     steplen: float = None
-    nroutes: int = DEF_N_ROUTES
+    nroutes: int = None
     nwalks: int = DEF_N_WALKS
     minrtlen: int = DEF_MIN_RTLEN
     maxrtlen: int = DEF_MAX_RTLEN
@@ -99,6 +98,10 @@ class GenOptions:
         gopts = GenOptions()
         gopts.loadYaml(yaml_path)
         return gopts
+    
+    def normalizeNullish(self):
+        if self.nroutes is None:
+            self.nroutes = self.vnum + self.obstacles
     
     def loadYaml(self,yaml_path:_Path):
         emptyyml:bool = False

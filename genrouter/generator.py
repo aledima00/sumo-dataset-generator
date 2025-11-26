@@ -77,25 +77,33 @@ class Generator:
             ptypes.append( (_PT(name=ppn, pp=pp), ppp) )
         return ptypes
     
-    def __gen_vehicles(self,routes):
+    def __gen_vehicles(self):
+        routes = [self.graph.randomRoute(route_id=f"RT{i}",min_steps=self.MIN_RTLEN,max_steps=self.MAX_RTLEN,source_edge_ids=self.source_edge_ids) for i in range(self.N_ROUTES)]
+        # shuffle to ensure randomness
+        _RND.shuffle(routes)
+                
+        used_routes = set()
         used_vtypes = set()
+
         vehicles:list[_VH] = []
         dpts = [_RND.uniform(0.0,self.TIME_HORIZON_S) for i in range(self.VNUM+self.obstacle_num)]
         for i in range(self.VNUM):
             vt = Generator.__draw_vtype(self.vtypes)
             vt = self.apply_random_modificators(vt)
             used_vtypes.add(vt)
-            rt = _RND.choice(routes)
+            rt = routes[i % len(routes)]
+            used_routes.add(rt)
             vehicles.append(_VH(f"VEH_{i}", vt.id, rt.id, dpts[i],additional_attributes=additional_attributes))
 
         for on in range(self.obstacle_num):
-            rt = _RND.choice(routes)
+            rt = routes[(self.VNUM+on) % len(routes)]
+            used_routes.add(rt)
             print(f"TIME OF OBSTACLE {on}: {dpts[self.VNUM+on]}")
             vehicles.append(_VH(f"OBS_{on}", ObstacleVtype.id, rt.id, dpts[self.VNUM+on],additional_attributes=additional_attributes))
 
         vehicles.sort(key=lambda v: v.depart_time)
 
-        return vehicles,used_vtypes
+        return vehicles,used_vtypes,used_routes
     
     def __genPersons(self):
         walks = [self.graph.randomWalk(min_steps=self.MIN_WALKLEN, max_steps=self.MAX_WALKLEN, source_edge_ids=self.source_edge_ids) for i in range(self.N_WALKS)]
@@ -152,8 +160,7 @@ class Generator:
     
     def generate(self):
 
-        routes = [self.graph.randomRoute(route_id=f"RT{i}",min_steps=self.MIN_RTLEN,max_steps=self.MAX_RTLEN,source_edge_ids=self.source_edge_ids) for i in range(self.N_ROUTES)]
-        vehicles, used_vtypes = self.__gen_vehicles(routes)
+        vehicles, used_vtypes, routes = self.__gen_vehicles()
         persons = self.__genPersons()
 
         with open (self.OUTPUT_FILE,'w') as f:
