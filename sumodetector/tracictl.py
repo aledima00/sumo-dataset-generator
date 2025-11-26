@@ -16,6 +16,11 @@ import numpy as _np
 import pandas as _pd
 from typing import Literal as _Lit
 import tarfile as _tarfile
+import multiprocessing as _mp
+import sys as _sys
+import signal as _signal
+import os as _os
+from time import perf_counter as _tpc
 
 ACTIVE_LABELS = {
     _LE.LANE_CHANGE,
@@ -45,12 +50,42 @@ def getStTypeFromVTypeID(vtype_id:str)->int:
     else:
         raise ValueError(f"Invalid vType ID format: {vtype_id}")
 
+def dumpParquet(dirpath:_Path, packs_df:_pd.DataFrame, labels_per_pid_df:_pd.DataFrame, vinfo_per_vid_df:_pd.DataFrame):
+    tables = {
+        "packs": packs_df,
+        "labels": labels_per_pid_df,
+        "vinfo": vinfo_per_vid_df,
+    }
+    for k,v in tables.items():
+        fname = dirpath.resolve() / f"{k}.parquet"
+        v.to_parquet(fname, index=False)
+
+def loadParquet(dirpath:_Path)->tuple[_pd.DataFrame,_pd.DataFrame,_pd.DataFrame]:
+    tables = []
+    for k in ["packs", "labels", "vinfo"]:
+        fname = dirpath.resolve() / f"{k}.parquet"
+        tables.append( _pd.read_parquet(fname) )
+    return tuple(tables)
+
+def loadMergedParquet(dirpaths:list[_Path])->tuple[_pd.DataFrame,_pd.DataFrame,_pd.DataFrame]:
+    packs = None
+    labels = None
+    vinfo = None
+    first = True
+    for dirpath in dirpaths:
+        p, l, v = loadParquet(dirpath)
+        packs = p if first else _pd.concat([packs, p], ignore_index=True)
+        labels = l if first else _pd.concat([labels, l], ignore_index=True)
+        vinfo = v if first else _pd.concat([vinfo, v], ignore_index=True)
+        if first:
+            first = False
+    return packs, labels, vinfo
 
 class TraciController:
-    plabels:list[_MLB]
     gui:bool
     step_len:float
     frame_pack_size:int
+    start_time_s:float
     sim_time_s:float
     on_collision:CollisionAction
     warnings:bool
@@ -75,12 +110,12 @@ class TraciController:
 
     packs_df: _pd.DataFrame
 
-    def __init__(self,*,gui:bool,sumo_cfg:_SCFG,step_len:float,frame_pack_size:int,sim_time_s:float,on_collision:CollisionAction,warnings:bool,emergency_insertions:bool,delay:float=None):
-        self.plabels = []
+    def __init__(self,*,gui:bool,sumo_cfg:_SCFG,step_len:float,frame_pack_size:int,sim_time_s:float,start_time_s:float,on_collision:CollisionAction,warnings:bool,emergency_insertions:bool,delay:float=None):
         self.gui = gui
         self.cfg = sumo_cfg
         self.step_len = step_len
         self.frame_pack_size = frame_pack_size
+        self.start_time_s = start_time_s
         self.sim_time_s = sim_time_s
         self.on_collision = on_collision
         self.warnings = warnings
@@ -322,6 +357,7 @@ class TraciController:
             "--time-to-teleport", "0",
             "--lanechange.duration", "3.5",
             "--time-to-impatience", "40",
+            "--no-step-log",
         ]
         args.extend(["--no-warnings", "false" if self.warnings else "true"])
         #args.extend(["--lateral-resolution", "0.1" ])
@@ -329,12 +365,18 @@ class TraciController:
         if self.emergency_insertions:
             args.extend(["--emergency-insert", "true"])
         args.append('--start')
-        _click.echo(f"{_Fore.GREEN}Starting SUMO (with command: {' '.join(args)}){_Style.RESET_ALL}")
+        _click.echo(f"{_Fore.WHITE}{_Style.DIM}Starting SUMO (with command: {' '.join(args)}){_Style.RESET_ALL}")
         _traci.start(args)
         laneIds = _traci.lane.getIDList()
         self.max_speed_per_lane = {lid: _traci.lane.getMaxSpeed(lid) for lid in laneIds}
         self.baseline_speed_per_lane = self.max_speed_per_lane.copy()
         lb = _MLB(active_labels=ACTIVE_LABELS)
+
+        if self.start_time_s > 0.0:
+            tlog(f"Skipping to start time {self.start_time_s}s...")
+            _traci.simulationStep(self.start_time_s-self.step_len)
+            self.__updateState()
+            _traci.simulationStep()
 
         for pn in range(self.total_packs):
             lb.clear()
@@ -354,20 +396,14 @@ class TraciController:
                     _t.sleep(self.delay)
 
             self.packs_df = _pd.concat([self.packs_df, pack.asPandas()], ignore_index=True)
-            self.plabels.append(lb)
             self.labels_per_pid_df = _pd.concat([self.labels_per_pid_df, lb.asPandas(pn)], ignore_index=True)
         
+        tend = _traci.simulation.getTime()
+        tlog(f"Simulation ended at time {tend}, closing SUMO...", enabled=True)
         _traci.close() 
 
     def dumpParquet(self,dirpath:_Path):
-        tables = {
-            "packs": self.packs_df,
-            "labels": self.labels_per_pid_df,
-            "vinfo": self.vinfo_per_vid_df,
-        }
-        for k,v in tables.items():
-            fname = dirpath.resolve() / f"{k}.parquet"
-            v.to_parquet(fname, index=False)
+        dumpParquet(dirpath, self.packs_df, self.labels_per_pid_df, self.vinfo_per_vid_df)
 
 def tar(src_folder:_Path):
     if not src_folder.is_dir():
@@ -375,6 +411,58 @@ def tar(src_folder:_Path):
     tarpath = src_folder.with_suffix('.tar')
     with _tarfile.open(tarpath, "w") as tar:
         tar.add(src_folder, arcname="data")
+
+def tctl_worker(gui,scfg,step_len,frame_pack_size,start_time_s,sim_time_s,on_collision,warnings,emergency_insertions,delay,*,queue:_mp.Queue, idx:int, excqueue:_mp.Queue, temp_path:_Path=None):
+    bp = temp_path if temp_path is not None else _Path.cwd()
+    controller = TraciController(
+        gui=gui,
+        sumo_cfg=scfg,
+        step_len=step_len,
+        frame_pack_size=frame_pack_size,
+        start_time_s=start_time_s,
+        sim_time_s=sim_time_s,
+        on_collision=on_collision,
+        warnings=warnings,
+        emergency_insertions=emergency_insertions,
+        delay=delay
+    )
+    def handle_sigusr1(signum, frame):
+        _click.echo(f"{_Fore.YELLOW}Worker {idx} received SIGUSR1 ({signum}), terminating simulation...{_Style.RESET_ALL}")
+        if _traci.isLoaded():
+            _traci.close()
+        _sys.exit(0)
+    _signal.signal(_signal.SIGUSR1, handle_sigusr1)
+    try:
+        controller.run()
+        tempdir = bp / f"w{idx:02d}"
+        tempdir.mkdir(parents=True, exist_ok=True)
+        controller.dumpParquet(tempdir)
+        queue.put( (idx, tempdir) )
+    except KeyboardInterrupt as kbdint:
+        _click.echo(f"{_Fore.RED}Worker {idx} interrupted by KeyboardInterrupt, terminating...{_Style.RESET_ALL}")
+        if _traci.isLoaded():
+            _traci.close()
+        excqueue.put((idx, kbdint))
+        _sys.exit(1)
+    except Exception as e:
+        _click.echo(f"{_Fore.RED}Worker {idx} encountered an error: {e}{_Style.RESET_ALL}")
+        if _traci.isLoaded():
+            _traci.close()
+        excqueue.put((idx, e))
+        _sys.exit(2)
+
+def ctlworker(worker_processes:list[_mp.Process],excqueue:_mp.Queue):
+    excfound = False
+    while not excfound:
+        try:
+            exc = excqueue.get(timeout=1)
+            excfound = True
+            for i,p in enumerate(worker_processes):
+                if p.is_alive() and i != exc[0]:
+                    _os.kill(p.pid, _signal.SIGUSR1)
+        except Exception:
+            # timeout -> no exception found in 1s
+            pass
 
 @_click.command()
 @_click.option('--gui','-g', is_flag=True, default=False, help='Run SUMO with GUI')
@@ -384,11 +472,12 @@ def tar(src_folder:_Path):
 @_click.option('--pack-size','-p', type=int, default=20, help='Number of frames in each pack (default: 20).')
 @_click.option('--sim-time','-t', type=float, default=500.0, help='Total simulation time in seconds (default: 500s).')
 @_click.option('--on-collision', type=_click.Choice([e.value for e in CollisionAction]), default=CollisionAction.TELEPORT.value, help='Action to take on collision (default: remove).')
-@_click.option('--outdir', type=_click.Path(file_okay=False, dir_okay=True, writable=True), default=None, help='Output directory for label files (default: ./plabels).')
+@_click.option('--outdir', type=_click.Path(file_okay=False, dir_okay=True, writable=True), required=True, help='Output directory for label files (required).')
 @_click.option('--delay', '-d', type=float, default=None, help='Delay in ms between simulation steps (default: no delay).')
 @_click.option('--tar','tar_opt', is_flag=True, default=False, help='Create a tar archive of the output directory after simulation. No need for .gz compression since files are parquet format.')
+@_click.option('-M', '--multi-threaded', 'multi_threaded', is_flag=True, default=False, help='Whether to run the simulation in multi-threaded mode (default: False).')
 @_click.argument('cfg_path', type=_click.Path(exists=True), nargs=1)
-def runSimulation(gui, no_warnings, no_emergency_insertions, step_len, pack_size, sim_time, on_collision, cfg_path,outdir, delay, tar_opt):
+def runSimulation(gui, no_warnings, no_emergency_insertions, step_len, pack_size, sim_time, on_collision, cfg_path,outdir, delay, tar_opt, multi_threaded):
     
     sumo_cfg = _SCFG(_Path(cfg_path))
 
@@ -397,29 +486,98 @@ def runSimulation(gui, no_warnings, no_emergency_insertions, step_len, pack_size
     if sumo_cfg.duration_s is not None:
         sim_time = sumo_cfg.duration_s
 
-    controller = TraciController(
-        gui=gui,
-        sumo_cfg=sumo_cfg,
-        step_len=step_len,
-        frame_pack_size=pack_size,
-        sim_time_s=sim_time,
-        on_collision=CollisionAction(on_collision),
-        warnings = not no_warnings,
-        emergency_insertions = not no_emergency_insertions,
-        delay=delay
-    )
-    controller.run()
-    _click.echo(f"{_Fore.GREEN}Simulation completed successfully.{_Style.RESET_ALL}")
-    _click.echo(f"Total Packs Analyzed: {len(controller.plabels)}")
-    _click.echo(f"Resulting Labels:")
-
-    outdir = _Path(outdir) if outdir is not None else (_Path.cwd() / "out" / "out")
+    outdir = _Path(outdir)
     if outdir.exists():
         _rmrf(outdir)
     if outdir.with_suffix('.tar').exists():
         outdir.with_suffix('.tar').unlink()
     outdir.mkdir(parents=True, exist_ok=True)
-    controller.dumpParquet(outdir)
+
+    controller: TraciController = None
+
+    start_time = _tpc()
+
+    if multi_threaded:
+        nprocs = _mp.cpu_count() // 2
+        # use half of available CPUs to avoid overloading
+        _click.echo(f"{_Fore.GREEN}Running simulation in multi-threaded mode with {nprocs} workers...{_Style.RESET_ALL}")
+        queue = _mp.Queue()
+        excqueue = _mp.Queue()
+        processes: list[_mp.Process] = []
+
+        sim_time_per_cpu = sim_time / nprocs
+        workers_cache_path = (sumo_cfg.sumocfg_file.parent / '.workers_tmp').resolve()
+        if workers_cache_path.exists():
+            _rmrf(workers_cache_path)
+
+        for i in range(nprocs):
+            p = _mp.Process(target=tctl_worker, args=(
+                gui,
+                sumo_cfg,
+                step_len,
+                pack_size,
+                i * sim_time_per_cpu,
+                sim_time_per_cpu,
+                CollisionAction(on_collision),
+                not no_warnings,
+                not no_emergency_insertions,
+                delay,
+            ), kwargs={'queue': queue, 'idx': i, 'excqueue': excqueue, 'temp_path': workers_cache_path})
+            processes.append(p)
+            p.start()
+
+        ctl_proc = _mp.Process(target=ctlworker, args=(processes, excqueue))
+        ctl_proc.start()
+
+        try:
+            for p in processes:
+                p.join()
+        except KeyboardInterrupt as kbdint:
+            # keyboard interrupt in main thread
+            _click.echo(f"{_Fore.RED}KeyboardInterrupt received, terminating all processes...{_Style.RESET_ALL}")
+            excqueue.put( (-1, kbdint) )
+        except Exception as e:
+            # exception in main thread
+            _click.echo(f"{_Fore.RED}An error occurred during multi-threaded simulation: {e}{_Style.RESET_ALL}")
+            excqueue.put( (-1, e) )
+
+        if ctl_proc.is_alive():
+            ctl_proc.terminate()
+        else:
+            _sys.exit(-1)
+            
+        fnames = []
+        for i in range(nprocs):
+            print(f"{_Fore.GREEN}Collected results from worker #{i}{_Style.RESET_ALL}")
+            fnames.append( queue.get() )
+        # sort controllers by idx
+        fnames.sort(key=lambda x: x[0])
+        fnames = [f[1] for f in fnames]
+        fdata = loadMergedParquet(fnames)
+        dumpParquet(outdir, *fdata)
+        _rmrf(workers_cache_path)
+
+
+    else:
+        _click.echo(f"{_Fore.GREEN}Running simulation in single-threaded mode...{_Style.RESET_ALL}")
+        controller = TraciController(
+            gui=gui,
+            sumo_cfg=sumo_cfg,
+            step_len=step_len,
+            frame_pack_size=pack_size,
+            start_time_s=0.0,
+            sim_time_s=sim_time,
+            on_collision=CollisionAction(on_collision),
+            warnings=not no_warnings,
+            emergency_insertions=not no_emergency_insertions,
+            delay=delay
+        )
+        controller.run()
+        controller.dumpParquet(outdir)
+    
+    end_time = _tpc()
+    elapsed = end_time - start_time
+    _click.echo(f"{_Fore.GREEN}Simulation completed successfully in {elapsed:.2f} seconds.{_Style.RESET_ALL}")
     _click.echo(f"- All data dumped in parquet format to {outdir}")
 
     if tar_opt:
