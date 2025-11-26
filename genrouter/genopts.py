@@ -5,7 +5,6 @@ from .vehicles import IParams as _IP, VParams as _VP
 from .persons import PersonParams as _PP
 
 # default generation params
-DEF_N_WALKS = 20
 DEF_MIN_RTLEN = 10
 DEF_MAX_RTLEN = 20
 DEF_MIN_WALKLEN = 2
@@ -75,7 +74,7 @@ class GenOptions:
     time: int = None
     steplen: float = None
     nroutes: int = None
-    nwalks: int = DEF_N_WALKS
+    nwalks: int = None
     minrtlen: int = DEF_MIN_RTLEN
     maxrtlen: int = DEF_MAX_RTLEN
     minwalklen: int = DEF_MIN_WALKLEN
@@ -102,6 +101,8 @@ class GenOptions:
     def normalizeNullish(self):
         if self.nroutes is None:
             self.nroutes = self.vnum + self.obstacles
+        if self.nwalks is None:
+            self.nwalks = self.pnum
     
     def loadYaml(self,yaml_path:_Path):
         emptyyml:bool = False

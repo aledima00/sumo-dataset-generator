@@ -107,6 +107,8 @@ class Generator:
     
     def __genPersons(self):
         walks = [self.graph.randomWalk(min_steps=self.MIN_WALKLEN, max_steps=self.MAX_WALKLEN, source_edge_ids=self.source_edge_ids) for i in range(self.N_WALKS)]
+        _RND.shuffle(walks)
+        
         persons:list[_Person] = []
         dpts = sorted([_RND.uniform(0.0,self.TIME_HORIZON_S) for i in range(self.PNUM)])
         
@@ -115,8 +117,8 @@ class Generator:
             persons.append( _Person(id=f"PRS_{i}", depart_time=dpts[i],ptype_id=pt.id) )
         persons.sort(key=lambda p: p.depart_time)
         
-        for p in persons:
-            wk = _RND.choice(walks)
+        for i,p in enumerate(persons):
+            wk = walks[i % len(walks)]
             p.addWalk(wk)
         return persons
 
