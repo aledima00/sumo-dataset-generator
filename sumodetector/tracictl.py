@@ -1,8 +1,7 @@
-import click as _click
 from math import floor as _floor
 import sumolib as _sumolib
 import traci as _traci
-from enum import Enum as _EN
+from typing import Literal as _Lit
 from pathlib import Path as _Path
 from .labels import LabelsEnum as _LE, MultiLabel as _MLB
 from .map import MapParser as _MP, PedestrianAreaType as _PAT
@@ -10,41 +9,16 @@ from .sumocfg import SumoCfg as _SCFG
 from .pack import PackData as _PKD, FrameData as _FD, VehicleData as _VD, VInfo as _VI, PInfo as _PI
 from colorama import Fore as _Fore, Style as _Style
 import re as _re
-from shutil import rmtree as _rmrf
 import time as _t
 import numpy as _np
 import pandas as _pd
-import tarfile as _tarfile
 import multiprocessing as _mp
-import sys as _sys
-import signal as _signal
-import os as _os
-from time import perf_counter as _tpc
+
 import pyarrow as _pa
 import pyarrow.parquet as _pq
-from tqdm.auto import tqdm as _tqdm
+    
 
-ACTIVE_LABELS = {
-    _LE.LANE_CHANGE,
-    _LE.LANE_MERGE,
-    _LE.OVERTAKE,
-    _LE.BRAKING,
-    _LE.TURN_INTENT,
-    _LE.COLLISION,
-    _LE.PEDESTRIAN_IN_ROAD,
-    _LE.OBSTACLE_IN_ROAD,
-    _LE.TRAFFIC_JAM
-}
-
-def tlog(val:str):
-    return
-    _click.echo(f"{_Fore.MAGENTA}[{_traci.simulation.getTime()}] {val}{_Style.RESET_ALL}")
-
-class CollisionAction(_EN):
-    TELEPORT = "teleport"
-    WARN = "warn"
-    NONE = "none"
-    REMOVE = "remove"
+CollisionAction = _Lit["teleport", "warn", "none", "remove"]
 
 def getStTypeFromVTypeID(vtype_id:str)->int:
     match = _re.search(r"^ST(\d+)(_|$)", vtype_id)
@@ -52,58 +26,6 @@ def getStTypeFromVTypeID(vtype_id:str)->int:
         return int(match.group(1))
     else:
         raise ValueError(f"Invalid vType ID format: {vtype_id}")
-
-
-def concatWithPackIdOffset(df1:_pd.DataFrame, df2:_pd.DataFrame)->_pd.DataFrame:
-    """
-    Concatenate two packs DataFrames, adjusting the 'PackId' in df2 to avoid overlaps.
-    """
-    if df1.empty:
-        return df2.copy()
-    if df2.empty:
-        return df1.copy()
-    max_pack_id_df1 = df1['PackId'].max()
-    df2_adjusted = df2.copy()
-    df2_adjusted['PackId'] += (max_pack_id_df1 + 1)
-    return _pd.concat([df1, df2_adjusted], ignore_index=True)
-
-def concatNoDuplicates(df1:_pd.DataFrame, df2:_pd.DataFrame, keycol:str)->_pd.DataFrame:
-    """
-    Concatenate two DataFrames, avoiding duplicates based on a key column.
-    """
-    if df1.empty:
-        return df2.copy()
-    if df2.empty:
-        return df1.copy()
-    existing_keys = set(df1[keycol].unique())
-    df2_filtered = df2[~df2[keycol].isin(existing_keys)]
-    return _pd.concat([df1, df2_filtered], ignore_index=True)
-
-def mergeDirs(dirpaths:list[_Path], outdir:_Path):
-    lb_df = None
-    vi_df = None
-    pkwriter = _pq.ParquetWriter(str(outdir / "packs.parquet"), _PKD.pyarrowSchema())
-    for dirpath in dirpaths:
-        cur_lb_df = _pd.read_parquet(dirpath / "labels.parquet")
-        cur_vi_df = _pd.read_parquet(dirpath / "vinfo.parquet")
-        lb_df = cur_lb_df if lb_df is None else concatWithPackIdOffset(lb_df, cur_lb_df)
-        vi_df = cur_vi_df if vi_df is None else concatNoDuplicates(vi_df, cur_vi_df, keycol="VehicleId")
-
-        # stream packs from one dir to output
-        pkreader = _pq.ParquetFile(str(dirpath / "packs.parquet"))
-        ngroups = pkreader.num_row_groups
-        for i in range(ngroups):
-            tbl = pkreader.read_row_group(i)
-            pkwriter.write_table(tbl)
-        # close reader
-        pkreader.close()
-
-        # delete dirpath
-        _rmrf(dirpath)
-
-    lb_df.to_parquet(outdir / "labels.parquet", index=False)
-    vi_df.to_parquet(outdir / "vinfo.parquet", index=False)
-    pkwriter.close()
 
 class TraciController:
     gui:bool
@@ -133,7 +55,7 @@ class TraciController:
     cfg:_SCFG
 
 
-    def __init__(self,*,gui:bool,sumo_cfg:_SCFG,step_len:float,frame_pack_size:int,sim_time_s:float,start_time_s:float,on_collision:CollisionAction,warnings:bool,emergency_insertions:bool,delay:float=None):
+    def __init__(self,*,gui:bool,sumo_cfg:_SCFG,step_len:float,frame_pack_size:int,sim_time_s:float,start_time_s:float,on_collision:CollisionAction='none',warnings:bool,emergency_insertions:bool,delay:float=None,active_labels:set[_LE],printfunc=None,tlog:bool=False):
         self.gui = gui
         self.cfg = sumo_cfg
         self.step_len = step_len
@@ -163,6 +85,15 @@ class TraciController:
         self.vehs_leaders = dict()
         self.labels_per_pid_df = _pd.DataFrame()
         self.vinfo_per_vid_df = _pd.DataFrame()
+
+        self.active_labels = active_labels
+        self.print = printfunc if printfunc is not None else (lambda x: None)
+        self.__tlog_enabled = tlog
+
+    def tlog(self, val:str):
+        if self.__tlog_enabled:
+            self.print(f"{_Fore.MAGENTA}[{_traci.simulation.getTime()}] {val}{_Style.RESET_ALL}")
+
 
     @staticmethod
     def __getVehEdge(vid:str)->str:
@@ -196,13 +127,12 @@ class TraciController:
                 if not self.map_parser.isLaneSpecial(lane_id):
                     self.vehs_lanes_no_junc_intlane[vid] = lane_id
     
-    @staticmethod
-    def __checkCollision(lb:_MLB)->bool:
+    def __checkCollision(self,lb:_MLB)->bool:
         if lb.checkLabelDone(_LE.COLLISION):
             return True
         clist = _traci.simulation.getCollidingVehiclesIDList()
         if len(clist)>0:
-            tlog(f"Collision detected among vehicles: {clist}")
+            self.tlog(f"Collision detected among vehicles: {clist}")
             lb.setLabel(_LE.COLLISION)
             return True
 
@@ -216,17 +146,16 @@ class TraciController:
                 if acc < self.acc_braking_threshold:
                     vbs.append(vid)
                 if len(vbs) >= self.braking_min_count:
-                    tlog(f"Braking detected for vehicles: {vbs}")
+                    self.tlog(f"Braking detected for vehicles: {vbs}")
                     lb.setLabel(_LE.BRAKING)
                     return True
             
-    @staticmethod
-    def __checkObstacles(lb:_MLB):
+    def __checkObstacles(self,lb:_MLB):
         if lb.checkLabelDone(_LE.OBSTACLE_IN_ROAD):
             return True
         for vid in _traci.vehicle.getIDList():
             if str(vid).startswith("OBS_"):
-                tlog(f"Obstacle {vid} detected in simulation.")
+                self.tlog(f"Obstacle {vid} detected in simulation.")
                 lb.setLabel(_LE.OBSTACLE_IN_ROAD)
                 return 
             
@@ -243,7 +172,7 @@ class TraciController:
 
             ratio = avg_speed / self.baseline_speed_per_lane[laneId]
             if ratio < self.slowdown_traffic_threshold:
-                tlog(f"Traffic jam detected on lane {laneId} with average speed {avg_speed:.2f} m/s ({ratio*100:.1f}% of baseline).")
+                self.tlog(f"Traffic jam detected on lane {laneId} with average speed {avg_speed:.2f} m/s ({ratio*100:.1f}% of baseline).")
                 lb.setLabel(_LE.TRAFFIC_JAM)
                 return
         
@@ -262,12 +191,12 @@ class TraciController:
                         # generic lc situation
                         if not lb.checkLabelDone(_LE.LANE_CHANGE):
                             lb.setLabel(_LE.LANE_CHANGE)
-                            tlog(f"Vehicle {vid} changed lane from {prev_lane_id} to {lane_id} on edge {e1id}.")
+                            self.tlog(f"Vehicle {vid} changed lane from {prev_lane_id} to {lane_id} on edge {e1id}.")
                         if not lb.checkLabelDone(_LE.LANE_MERGE):
                             is_lc_lm = self.map_parser.checkIfLcLm(prev_lane_id,lane_id)
                             if is_lc_lm:
                                 lb.setLabel(_LE.LANE_MERGE)
-                                tlog(f"Vehicle {vid} performed Lane Change corresponding to Lane Merge from lane {prev_lane_id} to {lane_id} on edge {e1id}.")
+                                self.tlog(f"Vehicle {vid} performed Lane Change corresponding to Lane Merge from lane {prev_lane_id} to {lane_id} on edge {e1id}.")
                         return True
                     
     def __checkOvertake(self,lb:_MLB):
@@ -279,7 +208,7 @@ class TraciController:
                 current_leader_id = self.__getRealEdgeLeader(vid)
                 if old_leader_id is not None and current_leader_id != old_leader_id and (self.__getVehEdge(vid) == self.__getVehEdge(old_leader_id)):
                     lb.setLabel(_LE.OVERTAKE)
-                    tlog(f"Detected Overtake of Vehicle {vid} on {old_leader_id}")
+                    self.tlog(f"Detected Overtake of Vehicle {vid} on {old_leader_id}")
                     return True
                         
     def __checkTurn(self,lb:_MLB):
@@ -294,7 +223,7 @@ class TraciController:
                     if cont_lane_id is None or lane_id != cont_lane_id:
                         # turning detected
                         lb.setLabel(_LE.TURN_INTENT)
-                        tlog(f"Vehicle {vid} performed turn from lane {prev_lane_id} to {lane_id}.")
+                        self.tlog(f"Vehicle {vid} performed turn from lane {prev_lane_id} to {lane_id}.")
                         return True
                    
     def __checkPedestrianInRoad(self,lb:_MLB):
@@ -305,7 +234,7 @@ class TraciController:
             is_pedestrian_area, area_type = self.map_parser.isPedestrianArea(laneid)
             if not is_pedestrian_area:
                 lb.setLabel(_LE.PEDESTRIAN_IN_ROAD)
-                tlog(f"Detected Pedestrian {pid} in road lane {laneid}")
+                self.tlog(f"Detected Pedestrian {pid} in road lane {laneid}")
                 return True
             elif area_type==_PAT.CROSSING_TLS:
                 # if crossing with tls, further check if it has right of way
@@ -315,7 +244,7 @@ class TraciController:
                     # hasFoe=False => nessuna lane conflittuale con precedenza
                     if (not isOpen) or hasFoe:
                         lb.setLabel(_LE.PEDESTRIAN_IN_ROAD)
-                        tlog(f"Detected Pedestrian {pid} in crossing with traffic light lane {laneid} without right of way")
+                        self.tlog(f"Detected Pedestrian {pid} in crossing with traffic light lane {laneid} without right of way")
                         return True
                     
                         
@@ -380,7 +309,7 @@ class TraciController:
         args = [
             self.sumobin,
             "-c", str(self.cfg.sumocfg_file),
-            "--collision.action", self.on_collision.value,
+            "--collision.action", self.on_collision,
             "--collision.check-junctions", "true",
             "--time-to-teleport", "0",
             "--lanechange.duration", "3.5",
@@ -393,15 +322,15 @@ class TraciController:
         if self.emergency_insertions:
             args.extend(["--emergency-insert", "true"])
         args.append('--start')
-        _click.echo(f"{_Fore.WHITE}{_Style.DIM}Starting SUMO (with command: {' '.join(args)}){_Style.RESET_ALL}")
+        self.print(f"{_Fore.WHITE}{_Style.DIM}Starting SUMO (with command: {' '.join(args)}){_Style.RESET_ALL}")
         _traci.start(args)
         laneIds = _traci.lane.getIDList()
         self.max_speed_per_lane = {lid: _traci.lane.getMaxSpeed(lid) for lid in laneIds}
         self.baseline_speed_per_lane = self.max_speed_per_lane.copy()
-        lb = _MLB(active_labels=ACTIVE_LABELS)
+        lb = _MLB(active_labels=self.active_labels)
 
         if self.start_time_s > 0.0:
-            tlog(f"Skipping to start time {self.start_time_s}s...")
+            self.tlog(f"Skipping to start time {self.start_time_s}s...")
             _traci.simulationStep(self.start_time_s-self.step_len)
             self.__updateState()
             _traci.simulationStep()
@@ -433,7 +362,7 @@ class TraciController:
                 progress_queue.put(1)
         
         tend = _traci.simulation.getTime()
-        tlog(f"Simulation ended at time {tend}, closing SUMO...")
+        self.tlog(f"Simulation ended at time {tend}, closing SUMO...")
         _traci.close() 
 
         # save labels and vinfo to related .parquet files
@@ -442,188 +371,8 @@ class TraciController:
         if pkwriter is not None:
             pkwriter.close()
 
-def tar(src_folder:_Path):
-    if not src_folder.is_dir():
-        raise ValueError(f"Source folder '{src_folder}' is not a directory")
-    tarpath = src_folder.with_suffix('.tar')
-    with _tarfile.open(tarpath, "w") as tar:
-        tar.add(src_folder, arcname="data")
 
-def tctl_worker(gui,scfg,step_len,frame_pack_size,start_time_s,sim_time_s,on_collision,warnings,emergency_insertions,delay,*,queue:_mp.Queue,progress_queue:_mp.Queue, idx:int, excqueue:_mp.Queue, temp_path:_Path=None):
-    bp = temp_path if temp_path is not None else _Path.cwd()
-    controller = TraciController(
-        gui=gui,
-        sumo_cfg=scfg,
-        step_len=step_len,
-        frame_pack_size=frame_pack_size,
-        start_time_s=start_time_s,
-        sim_time_s=sim_time_s,
-        on_collision=on_collision,
-        warnings=warnings,
-        emergency_insertions=emergency_insertions,
-        delay=delay
-    )
-    def handle_sigusr1(signum, frame):
-        _click.echo(f"{_Fore.YELLOW}Worker {idx} received SIGUSR1 ({signum}), terminating simulation...{_Style.RESET_ALL}")
-        if _traci.isLoaded():
-            _traci.close()
-        _sys.exit(0)
-    _signal.signal(_signal.SIGUSR1, handle_sigusr1)
-    try:
-        tempdir = bp / f"w{idx:02d}"
-        if tempdir.exists():
-            _rmrf(tempdir)
-        tempdir.mkdir(parents=True, exist_ok=True)
-        controller.run(save_dirpath=tempdir,progress_queue=progress_queue)
-        queue.put( (idx, tempdir) )
-    except KeyboardInterrupt as kbdint:
-        _click.echo(f"{_Fore.RED}Worker {idx} interrupted by KeyboardInterrupt, terminating...{_Style.RESET_ALL}")
-        if _traci.isLoaded():
-            _traci.close()
-        excqueue.put((idx, kbdint))
-        _sys.exit(1)
-    except Exception as e:
-        _click.echo(f"{_Fore.RED}Worker {idx} encountered an error: {e}{_Style.RESET_ALL}")
-        if _traci.isLoaded():
-            _traci.close()
-        excqueue.put((idx, e))
-        _sys.exit(2)
-
-def ctlworker(worker_processes:list[_mp.Process],excqueue:_mp.Queue):
-    excfound = False
-    while not excfound:
-        try:
-            exc = excqueue.get(timeout=1)
-            excfound = True
-            for i,p in enumerate(worker_processes):
-                if p.is_alive() and i != exc[0]:
-                    _os.kill(p.pid, _signal.SIGUSR1)
-        except Exception:
-            # timeout -> no exception found in 1s
-            pass
-
-def tqdm_logger_worker(total_packs:int, pdonequeue:_mp.Queue):
-    progress=_tqdm(total=total_packs, desc="Simulation Progress", unit="packs")
-    done = 0
-    while done < total_packs:
-        val = pdonequeue.get()
-        done += val
-        progress.update(val)
-    progress.close()
-
-@_click.command()
-@_click.option('--gui','-g', is_flag=True, default=False, help='Run SUMO with GUI')
-@_click.option('--no-warnings', is_flag=True, default=False, help='Suppress SUMO warnings.')
-@_click.option('--no-emergency-insertions', is_flag=True, default=False, help='Disable insertion of emergency vehicles during simulation (default: False).')
-@_click.option('--step-len','-s', type=float, default=0.2, help='Length of each simulation step in seconds (default: 0.2s).')
-@_click.option('--pack-size','-p', type=int, default=20, help='Number of frames in each pack (default: 20).')
-@_click.option('--sim-time','-t', type=float, default=500.0, help='Total simulation time in seconds (default: 500s).')
-@_click.option('--on-collision', type=_click.Choice([e.value for e in CollisionAction]), default=CollisionAction.TELEPORT.value, help='Action to take on collision (default: remove).')
-@_click.option('--outdir', type=_click.Path(file_okay=False, dir_okay=True, writable=True), required=True, help='Output directory for label files (required).')
-@_click.option('--delay', '-d', type=float, default=None, help='Delay in ms between simulation steps (default: no delay).')
-@_click.option('--tar','tar_opt', is_flag=True, default=False, help='Create a tar archive of the output directory after simulation. No need for .gz compression since files are parquet format.')
-@_click.option('-M', '--multi-threaded', 'multi_threaded', is_flag=True, default=False, help='Whether to run the simulation in multi-threaded mode (default: False).')
-@_click.argument('cfg_path', type=_click.Path(exists=True), nargs=1)
-def runSimulation(gui, no_warnings, no_emergency_insertions, step_len, pack_size, sim_time, on_collision, cfg_path,outdir, delay, tar_opt, multi_threaded):
-    
-    sumo_cfg = _SCFG(_Path(cfg_path))
-
-    if sumo_cfg.step_length_s is not None:
-        step_len = sumo_cfg.step_length_s
-    if sumo_cfg.duration_s is not None:
-        sim_time = sumo_cfg.duration_s
-
-    outdir = _Path(outdir)
-    if outdir.exists():
-        _rmrf(outdir)
-    if outdir.with_suffix('.tar').exists():
-        outdir.with_suffix('.tar').unlink()
-    outdir.mkdir(parents=True, exist_ok=True)
-
-    controller: TraciController = None
-
-    start_time = _tpc()
-
-    if multi_threaded:
-        nprocs = _mp.cpu_count() // 2
-        # use half of available CPUs to avoid overloading
-        _click.echo(f"{_Fore.GREEN}Running simulation in multi-threaded mode with {nprocs} workers...{_Style.RESET_ALL}")
-        queue = _mp.Queue()
-        excqueue = _mp.Queue()
-        progress_queue = _mp.Queue()
-        processes: list[_mp.Process] = []
-
-        sim_time_per_cpu = sim_time / nprocs
-        workers_cache_path = (sumo_cfg.sumocfg_file.parent / '.workers_tmp').resolve()
-        if workers_cache_path.exists():
-            _rmrf(workers_cache_path)
-
-        # progress logger
-        tot_packs = ((sim_time_per_cpu / step_len) // pack_size) * nprocs
-        progress_logger_proc = _mp.Process(target=tqdm_logger_worker, args=(tot_packs, progress_queue))
-        progress_logger_proc.start()
-
-        for i in range(nprocs):
-            p = _mp.Process(target=tctl_worker, args=(
-                gui,
-                sumo_cfg,
-                step_len,
-                pack_size,
-                i * sim_time_per_cpu,
-                sim_time_per_cpu,
-                CollisionAction(on_collision),
-                not no_warnings,
-                not no_emergency_insertions,
-                delay,
-            ), kwargs={'queue': queue, 'progress_queue': progress_queue, 'idx': i, 'excqueue': excqueue, 'temp_path': workers_cache_path})
-            processes.append(p)
-            p.start()
-
-        ctl_proc = _mp.Process(target=ctlworker, args=(processes, excqueue))
-        ctl_proc.start()
-
-        try:
-            for p in processes:
-                p.join()
-        except KeyboardInterrupt as kbdint:
-            # keyboard interrupt in main thread
-            _click.echo(f"{_Fore.RED}KeyboardInterrupt received, terminating all processes...{_Style.RESET_ALL}")
-            excqueue.put( (-1, kbdint) )
-        except Exception as e:
-            # exception in main thread
-            _click.echo(f"{_Fore.RED}An error occurred during multi-threaded simulation: {e}{_Style.RESET_ALL}")
-            excqueue.put( (-1, e) )
-
-        if ctl_proc.is_alive():
-            ctl_proc.terminate()
-            ctl_proc.join()
-        else:
-            _sys.exit(-1)
-
-        if progress_logger_proc.is_alive():
-            progress_logger_proc.terminate()
-        progress_logger_proc.join()
-            
-        dirnames = []
-        for i in range(nprocs):
-            print(f"{_Fore.GREEN}Collected results from worker #{i}{_Style.RESET_ALL}")
-            dirnames.append( queue.get() )
-        # sort controllers by idx
-        dirnames.sort(key=lambda x: x[0])
-        dirnames = [f[1] for f in dirnames]
-        mergeDirs(dirnames, outdir)
-        _rmrf(workers_cache_path)
-    
-    end_time = _tpc()
-    elapsed = end_time - start_time
-    _click.echo(f"{_Fore.GREEN}Simulation completed successfully in {elapsed:.2f} seconds.{_Style.RESET_ALL}")
-    _click.echo(f"- All data dumped in parquet format to {outdir}")
-
-    if tar_opt:
-        tar(outdir.resolve())
-        _click.echo(f"- Output directory archived to {outdir.with_suffix('.tar')}")
-        _rmrf(outdir.resolve())
 
         
 
-__all__ = ['runSimulation', 'TraciController', 'CollisionAction']
+__all__ = ['TraciController', 'CollisionAction']
