@@ -306,6 +306,9 @@ class TraciController:
         lbpath = save_dirpath / "labels.parquet"
         vipath = save_dirpath / "vinfo.parquet"
 
+        packs_buffer_df = _pd.DataFrame()
+        num_packs_flushbuf = 2000
+
         args = [
             self.sumobin,
             "-c", str(self.cfg.sumocfg_file),
@@ -352,11 +355,14 @@ class TraciController:
                 if self.delay is not None:
                     _t.sleep(self.delay)
 
-            pk = pack.asPandas()
-            if not pk.empty:
-                pk_tbl = _pa.Table.from_pandas(pk)
-                pkwriter.write_table(pk_tbl)
-                self.labels_per_pid_df = _pd.concat([self.labels_per_pid_df, lb.asPandas(pn)], ignore_index=True)
+            packs_buffer_df = _pd.concat([packs_buffer_df, pack.asPandas()], ignore_index=True)
+            self.labels_per_pid_df = _pd.concat([self.labels_per_pid_df, lb.asPandas(pn)], ignore_index=True)
+
+            if pn!=0 and pn % num_packs_flushbuf == 0 and not packs_buffer_df.empty:
+                # flush buffer to disk
+                pks_tbl = _pa.Table.from_pandas(packs_buffer_df)
+                pkwriter.write_table(pks_tbl)
+                packs_buffer_df = _pd.DataFrame()
 
             if progress_queue is not None:
                 progress_queue.put(1)
