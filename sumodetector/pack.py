@@ -1,6 +1,7 @@
 from dataclasses import dataclass as _dc, field as _field
 import pandas as _pd
 from typing import Literal as _Lit
+import pyarrow as _pa
 
 @_dc
 class VInfo:
@@ -70,6 +71,8 @@ class FrameData:
         peds_df = _pd.concat([pd.asPandas() for pd in self.pedestrians], ignore_index=True) if len(self.pedestrians) > 0 else _pd.DataFrame()
         vehs_df = _pd.concat([vd.asPandas() for vd in self.vehicles], ignore_index=True) if len(self.vehicles) > 0 else _pd.DataFrame()
         df = _pd.concat([peds_df, vehs_df], ignore_index=True)
+        if df.empty:
+            return df
         df["FrameId"] = self.id
         df["FrameId"] = df["FrameId"].astype("uint8")
         return df
@@ -81,8 +84,22 @@ class PackData:
     frames:list[FrameData] = _field(default_factory=list)
     def asPandas(self) -> _pd.DataFrame:
         df = _pd.concat([fd.asPandas() for fd in self.frames], ignore_index=True)
+        if df.empty:
+            return df
         df["PackId"] = self.id
         df["PackId"] = df["PackId"].astype("uint32")
         return df
+    
+    @staticmethod
+    def pyarrowSchema() -> _pa.schema:
+        return _pa.schema([
+            _pa.field("VehicleId", _pa.string()),
+            _pa.field("X", _pa.float32()),
+            _pa.field("Y", _pa.float32()),
+            _pa.field("Speed", _pa.float32()),
+            _pa.field("Angle", _pa.float32()),
+            _pa.field("FrameId", _pa.uint8()),
+            _pa.field("PackId", _pa.uint32()),
+        ])
     
 __all__ = ['VehicleData', 'FrameData', 'PackData', 'VInfo', 'PInfo']

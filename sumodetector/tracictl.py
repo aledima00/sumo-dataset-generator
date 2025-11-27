@@ -14,13 +14,15 @@ from shutil import rmtree as _rmrf
 import time as _t
 import numpy as _np
 import pandas as _pd
-from typing import Literal as _Lit
 import tarfile as _tarfile
 import multiprocessing as _mp
 import sys as _sys
 import signal as _signal
 import os as _os
 from time import perf_counter as _tpc
+import pyarrow as _pa
+import pyarrow.parquet as _pq
+from tqdm.auto import tqdm as _tqdm
 
 ACTIVE_LABELS = {
     _LE.LANE_CHANGE,
@@ -35,6 +37,7 @@ ACTIVE_LABELS = {
 }
 
 def tlog(val:str):
+    return
     _click.echo(f"{_Fore.MAGENTA}[{_traci.simulation.getTime()}] {val}{_Style.RESET_ALL}")
 
 class CollisionAction(_EN):
@@ -50,36 +53,57 @@ def getStTypeFromVTypeID(vtype_id:str)->int:
     else:
         raise ValueError(f"Invalid vType ID format: {vtype_id}")
 
-def dumpParquet(dirpath:_Path, packs_df:_pd.DataFrame, labels_per_pid_df:_pd.DataFrame, vinfo_per_vid_df:_pd.DataFrame):
-    tables = {
-        "packs": packs_df,
-        "labels": labels_per_pid_df,
-        "vinfo": vinfo_per_vid_df,
-    }
-    for k,v in tables.items():
-        fname = dirpath.resolve() / f"{k}.parquet"
-        v.to_parquet(fname, index=False)
 
-def loadParquet(dirpath:_Path)->tuple[_pd.DataFrame,_pd.DataFrame,_pd.DataFrame]:
-    tables = []
-    for k in ["packs", "labels", "vinfo"]:
-        fname = dirpath.resolve() / f"{k}.parquet"
-        tables.append( _pd.read_parquet(fname) )
-    return tuple(tables)
+def concatWithPackIdOffset(df1:_pd.DataFrame, df2:_pd.DataFrame)->_pd.DataFrame:
+    """
+    Concatenate two packs DataFrames, adjusting the 'PackId' in df2 to avoid overlaps.
+    """
+    if df1.empty:
+        return df2.copy()
+    if df2.empty:
+        return df1.copy()
+    max_pack_id_df1 = df1['PackId'].max()
+    df2_adjusted = df2.copy()
+    df2_adjusted['PackId'] += (max_pack_id_df1 + 1)
+    return _pd.concat([df1, df2_adjusted], ignore_index=True)
 
-def loadMergedParquet(dirpaths:list[_Path])->tuple[_pd.DataFrame,_pd.DataFrame,_pd.DataFrame]:
-    packs = None
-    labels = None
-    vinfo = None
-    first = True
+def concatNoDuplicates(df1:_pd.DataFrame, df2:_pd.DataFrame, keycol:str)->_pd.DataFrame:
+    """
+    Concatenate two DataFrames, avoiding duplicates based on a key column.
+    """
+    if df1.empty:
+        return df2.copy()
+    if df2.empty:
+        return df1.copy()
+    existing_keys = set(df1[keycol].unique())
+    df2_filtered = df2[~df2[keycol].isin(existing_keys)]
+    return _pd.concat([df1, df2_filtered], ignore_index=True)
+
+def mergeDirs(dirpaths:list[_Path], outdir:_Path):
+    lb_df = None
+    vi_df = None
+    pkwriter = _pq.ParquetWriter(str(outdir / "packs.parquet"), _PKD.pyarrowSchema())
     for dirpath in dirpaths:
-        p, l, v = loadParquet(dirpath)
-        packs = p if first else _pd.concat([packs, p], ignore_index=True)
-        labels = l if first else _pd.concat([labels, l], ignore_index=True)
-        vinfo = v if first else _pd.concat([vinfo, v], ignore_index=True)
-        if first:
-            first = False
-    return packs, labels, vinfo
+        cur_lb_df = _pd.read_parquet(dirpath / "labels.parquet")
+        cur_vi_df = _pd.read_parquet(dirpath / "vinfo.parquet")
+        lb_df = cur_lb_df if lb_df is None else concatWithPackIdOffset(lb_df, cur_lb_df)
+        vi_df = cur_vi_df if vi_df is None else concatNoDuplicates(vi_df, cur_vi_df, keycol="VehicleId")
+
+        # stream packs from one dir to output
+        pkreader = _pq.ParquetFile(str(dirpath / "packs.parquet"))
+        ngroups = pkreader.num_row_groups
+        for i in range(ngroups):
+            tbl = pkreader.read_row_group(i)
+            pkwriter.write_table(tbl)
+        # close reader
+        pkreader.close()
+
+        # delete dirpath
+        _rmrf(dirpath)
+
+    lb_df.to_parquet(outdir / "labels.parquet", index=False)
+    vi_df.to_parquet(outdir / "vinfo.parquet", index=False)
+    pkwriter.close()
 
 class TraciController:
     gui:bool
@@ -108,7 +132,6 @@ class TraciController:
     map_parser:_MP
     cfg:_SCFG
 
-    packs_df: _pd.DataFrame
 
     def __init__(self,*,gui:bool,sumo_cfg:_SCFG,step_len:float,frame_pack_size:int,sim_time_s:float,start_time_s:float,on_collision:CollisionAction,warnings:bool,emergency_insertions:bool,delay:float=None):
         self.gui = gui
@@ -138,7 +161,6 @@ class TraciController:
         self.vehs_lanes = dict()
         self.vehs_lanes_no_junc_intlane = dict()
         self.vehs_leaders = dict()
-        self.packs_df = _pd.DataFrame()
         self.labels_per_pid_df = _pd.DataFrame()
         self.vinfo_per_vid_df = _pd.DataFrame()
 
@@ -348,7 +370,13 @@ class TraciController:
                 frame.vehicles.append(vdata)
         return frame
     
-    def run(self):
+    def run(self,save_dirpath:_Path,progress_queue:_mp.Queue=None):
+
+        pkpath = save_dirpath / "packs.parquet"
+        pkwriter = _pq.ParquetWriter(str(pkpath), _PKD.pyarrowSchema())
+        lbpath = save_dirpath / "labels.parquet"
+        vipath = save_dirpath / "vinfo.parquet"
+
         args = [
             self.sumobin,
             "-c", str(self.cfg.sumocfg_file),
@@ -395,15 +423,24 @@ class TraciController:
                 if self.delay is not None:
                     _t.sleep(self.delay)
 
-            self.packs_df = _pd.concat([self.packs_df, pack.asPandas()], ignore_index=True)
+            pk = pack.asPandas()
+            if not pk.empty:
+                pk_tbl = _pa.Table.from_pandas(pk)
+                pkwriter.write_table(pk_tbl)
             self.labels_per_pid_df = _pd.concat([self.labels_per_pid_df, lb.asPandas(pn)], ignore_index=True)
+
+            if progress_queue is not None:
+                progress_queue.put(1)
         
         tend = _traci.simulation.getTime()
-        tlog(f"Simulation ended at time {tend}, closing SUMO...", enabled=True)
+        tlog(f"Simulation ended at time {tend}, closing SUMO...")
         _traci.close() 
 
-    def dumpParquet(self,dirpath:_Path):
-        dumpParquet(dirpath, self.packs_df, self.labels_per_pid_df, self.vinfo_per_vid_df)
+        # save labels and vinfo to related .parquet files
+        self.labels_per_pid_df.to_parquet(lbpath, index=False)
+        self.vinfo_per_vid_df.to_parquet(vipath, index=False)
+        if pkwriter is not None:
+            pkwriter.close()
 
 def tar(src_folder:_Path):
     if not src_folder.is_dir():
@@ -412,7 +449,7 @@ def tar(src_folder:_Path):
     with _tarfile.open(tarpath, "w") as tar:
         tar.add(src_folder, arcname="data")
 
-def tctl_worker(gui,scfg,step_len,frame_pack_size,start_time_s,sim_time_s,on_collision,warnings,emergency_insertions,delay,*,queue:_mp.Queue, idx:int, excqueue:_mp.Queue, temp_path:_Path=None):
+def tctl_worker(gui,scfg,step_len,frame_pack_size,start_time_s,sim_time_s,on_collision,warnings,emergency_insertions,delay,*,queue:_mp.Queue,progress_queue:_mp.Queue, idx:int, excqueue:_mp.Queue, temp_path:_Path=None):
     bp = temp_path if temp_path is not None else _Path.cwd()
     controller = TraciController(
         gui=gui,
@@ -433,10 +470,11 @@ def tctl_worker(gui,scfg,step_len,frame_pack_size,start_time_s,sim_time_s,on_col
         _sys.exit(0)
     _signal.signal(_signal.SIGUSR1, handle_sigusr1)
     try:
-        controller.run()
         tempdir = bp / f"w{idx:02d}"
+        if tempdir.exists():
+            _rmrf(tempdir)
         tempdir.mkdir(parents=True, exist_ok=True)
-        controller.dumpParquet(tempdir)
+        controller.run(save_dirpath=tempdir,progress_queue=progress_queue)
         queue.put( (idx, tempdir) )
     except KeyboardInterrupt as kbdint:
         _click.echo(f"{_Fore.RED}Worker {idx} interrupted by KeyboardInterrupt, terminating...{_Style.RESET_ALL}")
@@ -463,6 +501,15 @@ def ctlworker(worker_processes:list[_mp.Process],excqueue:_mp.Queue):
         except Exception:
             # timeout -> no exception found in 1s
             pass
+
+def tqdm_logger_worker(total_packs:int, pdonequeue:_mp.Queue):
+    progress=_tqdm(total=total_packs, desc="Simulation Progress", unit="packs")
+    done = 0
+    while done < total_packs:
+        val = pdonequeue.get()
+        done += val
+        progress.update(val)
+    progress.close()
 
 @_click.command()
 @_click.option('--gui','-g', is_flag=True, default=False, help='Run SUMO with GUI')
@@ -503,12 +550,18 @@ def runSimulation(gui, no_warnings, no_emergency_insertions, step_len, pack_size
         _click.echo(f"{_Fore.GREEN}Running simulation in multi-threaded mode with {nprocs} workers...{_Style.RESET_ALL}")
         queue = _mp.Queue()
         excqueue = _mp.Queue()
+        progress_queue = _mp.Queue()
         processes: list[_mp.Process] = []
 
         sim_time_per_cpu = sim_time / nprocs
         workers_cache_path = (sumo_cfg.sumocfg_file.parent / '.workers_tmp').resolve()
         if workers_cache_path.exists():
             _rmrf(workers_cache_path)
+
+        # progress logger
+        tot_packs = ((sim_time_per_cpu / step_len) // pack_size) * nprocs
+        progress_logger_proc = _mp.Process(target=tqdm_logger_worker, args=(tot_packs, progress_queue))
+        progress_logger_proc.start()
 
         for i in range(nprocs):
             p = _mp.Process(target=tctl_worker, args=(
@@ -522,7 +575,7 @@ def runSimulation(gui, no_warnings, no_emergency_insertions, step_len, pack_size
                 not no_warnings,
                 not no_emergency_insertions,
                 delay,
-            ), kwargs={'queue': queue, 'idx': i, 'excqueue': excqueue, 'temp_path': workers_cache_path})
+            ), kwargs={'queue': queue, 'progress_queue': progress_queue, 'idx': i, 'excqueue': excqueue, 'temp_path': workers_cache_path})
             processes.append(p)
             p.start()
 
@@ -543,37 +596,23 @@ def runSimulation(gui, no_warnings, no_emergency_insertions, step_len, pack_size
 
         if ctl_proc.is_alive():
             ctl_proc.terminate()
+            ctl_proc.join()
         else:
             _sys.exit(-1)
+
+        if progress_logger_proc.is_alive():
+            progress_logger_proc.terminate()
+        progress_logger_proc.join()
             
-        fnames = []
+        dirnames = []
         for i in range(nprocs):
             print(f"{_Fore.GREEN}Collected results from worker #{i}{_Style.RESET_ALL}")
-            fnames.append( queue.get() )
+            dirnames.append( queue.get() )
         # sort controllers by idx
-        fnames.sort(key=lambda x: x[0])
-        fnames = [f[1] for f in fnames]
-        fdata = loadMergedParquet(fnames)
-        dumpParquet(outdir, *fdata)
+        dirnames.sort(key=lambda x: x[0])
+        dirnames = [f[1] for f in dirnames]
+        mergeDirs(dirnames, outdir)
         _rmrf(workers_cache_path)
-
-
-    else:
-        _click.echo(f"{_Fore.GREEN}Running simulation in single-threaded mode...{_Style.RESET_ALL}")
-        controller = TraciController(
-            gui=gui,
-            sumo_cfg=sumo_cfg,
-            step_len=step_len,
-            frame_pack_size=pack_size,
-            start_time_s=0.0,
-            sim_time_s=sim_time,
-            on_collision=CollisionAction(on_collision),
-            warnings=not no_warnings,
-            emergency_insertions=not no_emergency_insertions,
-            delay=delay
-        )
-        controller.run()
-        controller.dumpParquet(outdir)
     
     end_time = _tpc()
     elapsed = end_time - start_time
