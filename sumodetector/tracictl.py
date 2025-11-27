@@ -356,7 +356,7 @@ class TraciController:
             if not pk.empty:
                 pk_tbl = _pa.Table.from_pandas(pk)
                 pkwriter.write_table(pk_tbl)
-            self.labels_per_pid_df = _pd.concat([self.labels_per_pid_df, lb.asPandas(pn)], ignore_index=True)
+                self.labels_per_pid_df = _pd.concat([self.labels_per_pid_df, lb.asPandas(pn)], ignore_index=True)
 
             if progress_queue is not None:
                 progress_queue.put(1)
