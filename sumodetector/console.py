@@ -182,75 +182,74 @@ def runSimulation(gui, no_warnings, no_emergency_insertions, step_len, pack_size
 
     start_time = _tpc()
 
-    if multi_threaded:
-        nprocs = _mp.cpu_count() // 2
-        # use half of available CPUs to avoid overloading
-        _click.echo(f"{_Fore.GREEN}Running simulation in multi-threaded mode with {nprocs} workers...{_Style.RESET_ALL}")
-        queue = _mp.Queue()
-        excqueue = _mp.Queue()
-        progress_queue = _mp.Queue()
-        processes: list[_mp.Process] = []
+    nprocs = _mp.cpu_count() // 2 if multi_threaded else 1
+    # use half of available CPUs to avoid overloading
+    _click.echo(f"{_Fore.GREEN}Running simulation with {nprocs} worker{'s in parallel' if nprocs > 1 else ''}...{_Style.RESET_ALL}")
+    queue = _mp.Queue()
+    excqueue = _mp.Queue()
+    progress_queue = _mp.Queue()
+    processes: list[_mp.Process] = []
 
-        sim_time_per_cpu = sim_time / nprocs
-        workers_cache_path = (sumo_cfg.sumocfg_file.parent / '.workers_tmp').resolve()
-        if workers_cache_path.exists():
-            _rmrf(workers_cache_path)
-
-        # progress logger
-        tot_packs = ((sim_time_per_cpu / step_len) // pack_size) * nprocs
-        progress_logger_proc = _mp.Process(target=tqdm_logger_worker, args=(tot_packs, progress_queue))
-        progress_logger_proc.start()
-
-        for i in range(nprocs):
-            p = _mp.Process(target=tctl_worker, args=(
-                gui,
-                sumo_cfg,
-                step_len,
-                pack_size,
-                i * sim_time_per_cpu,
-                sim_time_per_cpu,
-                on_collision,
-                not no_warnings,
-                not no_emergency_insertions,
-                delay,
-            ), kwargs={'queue': queue, 'progress_queue': progress_queue, 'idx': i, 'excqueue': excqueue, 'temp_path': workers_cache_path})
-            processes.append(p)
-            p.start()
-
-        ctl_proc = _mp.Process(target=ctlworker, args=(processes, excqueue))
-        ctl_proc.start()
-
-        try:
-            for p in processes:
-                p.join()
-        except KeyboardInterrupt as kbdint:
-            # keyboard interrupt in main thread
-            _click.echo(f"{_Fore.RED}KeyboardInterrupt received, terminating all processes...{_Style.RESET_ALL}")
-            excqueue.put( (-1, kbdint) )
-        except Exception as e:
-            # exception in main thread
-            _click.echo(f"{_Fore.RED}An error occurred during multi-threaded simulation: {e}{_Style.RESET_ALL}")
-            excqueue.put( (-1, e) )
-
-        if ctl_proc.is_alive():
-            ctl_proc.terminate()
-            ctl_proc.join()
-        else:
-            _sys.exit(-1)
-
-        if progress_logger_proc.is_alive():
-            progress_logger_proc.terminate()
-        progress_logger_proc.join()
-            
-        dirnames = []
-        for i in range(nprocs):
-            print(f"{_Fore.GREEN}Collected results from worker #{i}{_Style.RESET_ALL}")
-            dirnames.append( queue.get() )
-        # sort controllers by idx
-        dirnames.sort(key=lambda x: x[0])
-        dirnames = [f[1] for f in dirnames]
-        mergeDirs(dirnames, outdir)
+    sim_time_per_cpu = sim_time / nprocs
+    workers_cache_path = (sumo_cfg.sumocfg_file.parent / '.workers_tmp').resolve()
+    if workers_cache_path.exists():
         _rmrf(workers_cache_path)
+
+    # progress logger
+    tot_packs = ((sim_time_per_cpu / step_len) // pack_size) * nprocs
+    progress_logger_proc = _mp.Process(target=tqdm_logger_worker, args=(tot_packs, progress_queue))
+    progress_logger_proc.start()
+
+    for i in range(nprocs):
+        p = _mp.Process(target=tctl_worker, args=(
+            gui,
+            sumo_cfg,
+            step_len,
+            pack_size,
+            i * sim_time_per_cpu,
+            sim_time_per_cpu,
+            on_collision,
+            not no_warnings,
+            not no_emergency_insertions,
+            delay,
+        ), kwargs={'queue': queue, 'progress_queue': progress_queue, 'idx': i, 'excqueue': excqueue, 'temp_path': workers_cache_path})
+        processes.append(p)
+        p.start()
+
+    ctl_proc = _mp.Process(target=ctlworker, args=(processes, excqueue))
+    ctl_proc.start()
+
+    try:
+        for p in processes:
+            p.join()
+    except KeyboardInterrupt as kbdint:
+        # keyboard interrupt in main thread
+        _click.echo(f"{_Fore.RED}KeyboardInterrupt received, terminating all processes...{_Style.RESET_ALL}")
+        excqueue.put( (-1, kbdint) )
+    except Exception as e:
+        # exception in main thread
+        _click.echo(f"{_Fore.RED}An error occurred during multi-threaded simulation: {e}{_Style.RESET_ALL}")
+        excqueue.put( (-1, e) )
+
+    if ctl_proc.is_alive():
+        ctl_proc.terminate()
+        ctl_proc.join()
+    else:
+        _sys.exit(-1)
+
+    if progress_logger_proc.is_alive():
+        progress_logger_proc.terminate()
+    progress_logger_proc.join()
+        
+    dirnames = []
+    for i in range(nprocs):
+        print(f"{_Fore.GREEN}Collected results from worker #{i}{_Style.RESET_ALL}")
+        dirnames.append( queue.get() )
+    # sort controllers by idx
+    dirnames.sort(key=lambda x: x[0])
+    dirnames = [f[1] for f in dirnames]
+    mergeDirs(dirnames, outdir)
+    _rmrf(workers_cache_path)
     
     end_time = _tpc()
     elapsed = end_time - start_time
