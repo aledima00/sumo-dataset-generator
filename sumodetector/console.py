@@ -25,8 +25,15 @@ ACTIVE_LABELS = {
 }
 
 
+def getMaxPackId(df:_pd.DataFrame)->int:
+    """
+    Get the maximum PackId from a packs DataFrame.
+    """
+    if df.empty:
+        return None
+    return df['PackId'].max()
 
-def concatWithPackIdOffset(df1:_pd.DataFrame, df2:_pd.DataFrame)->_pd.DataFrame:
+def concatWithOffset(df1:_pd.DataFrame, df2:_pd.DataFrame, offset:int)->_pd.DataFrame:
     """
     Concatenate two packs DataFrames, adjusting the 'PackId' in df2 to avoid overlaps.
     """
@@ -34,9 +41,9 @@ def concatWithPackIdOffset(df1:_pd.DataFrame, df2:_pd.DataFrame)->_pd.DataFrame:
         return df2.copy()
     if df2.empty:
         return df1.copy()
-    max_pack_id_df1 = df1['PackId'].max()
     df2_adjusted = df2.copy()
-    df2_adjusted['PackId'] += (max_pack_id_df1 + 1)
+    if offset is not None:
+        df2_adjusted['PackId'] += offset
     return _pd.concat([df1, df2_adjusted], ignore_index=True)
 
 def concatNoDuplicates(df1:_pd.DataFrame, df2:_pd.DataFrame, keycol:str)->_pd.DataFrame:
@@ -58,15 +65,20 @@ def mergeDirs(dirpaths:list[_Path], outdir:_Path):
     for dirpath in dirpaths:
         cur_lb_df = _pd.read_parquet(dirpath / "labels.parquet")
         cur_vi_df = _pd.read_parquet(dirpath / "vinfo.parquet")
-        lb_df = cur_lb_df if lb_df is None else concatWithPackIdOffset(lb_df, cur_lb_df)
+
+        pid_offset = 0 if lb_df is None else getMaxPackId(lb_df) + 1
+        lb_df = cur_lb_df if lb_df is None else concatWithOffset(lb_df, cur_lb_df, pid_offset)
         vi_df = cur_vi_df if vi_df is None else concatNoDuplicates(vi_df, cur_vi_df, keycol="VehicleId")
 
-        # stream packs from one dir to output
+        # stream packs from one dir to output, also here applying PackId offset
         pkreader = _pq.ParquetFile(str(dirpath / "packs.parquet"))
         ngroups = pkreader.num_row_groups
         for i in range(ngroups):
-            tbl = pkreader.read_row_group(i)
-            pkwriter.write_table(tbl)
+            t1 = pkreader.read_row_group(i)
+            df = t1.to_pandas()
+            df['PackId'] += pid_offset
+            t2 = _pa.Table.from_pandas(df)
+            pkwriter.write_table(t2)
         # close reader
         pkreader.close()
 

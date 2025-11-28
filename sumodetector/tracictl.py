@@ -367,6 +367,12 @@ class TraciController:
             if progress_queue is not None:
                 progress_queue.put(1)
         
+        # empties buffer if not empty
+        if not packs_buffer_df.empty:
+            pks_tbl = _pa.Table.from_pandas(packs_buffer_df)
+            pkwriter.write_table(pks_tbl)
+            packs_buffer_df = _pd.DataFrame()
+        
         tend = _traci.simulation.getTime()
         self.tlog(f"Simulation ended at time {tend}, closing SUMO...")
         _traci.close() 
