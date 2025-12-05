@@ -85,7 +85,7 @@ class PackData:
     def asPandas(self) -> _pd.DataFrame:
         df = _pd.concat([fd.asPandas() for fd in self.frames], ignore_index=True)
         if df.empty:
-            return df
+            return None
         df["PackId"] = self.id
         df["PackId"] = df["PackId"].astype("uint32")
         return df

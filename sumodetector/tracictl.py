@@ -13,6 +13,8 @@ import time as _t
 import numpy as _np
 import pandas as _pd
 import multiprocessing as _mp
+import sys as _sys
+import os as _os
 
 import pyarrow as _pa
 import pyarrow.parquet as _pq
@@ -73,7 +75,8 @@ class TraciController:
 
         self.map_parser = _MP(str(self.cfg.net_file))
 
-        self.acc_braking_threshold = -2.0
+        # TODO:CHECK these values
+        self.acc_braking_threshold = -2.0 # m/s²
         self.slowdown_traffic_threshold = 0.1
         self.merge_speed_threshold = 0.3
         self.traffic_jam_min_size = 8
@@ -307,7 +310,9 @@ class TraciController:
         vipath = save_dirpath / "vinfo.parquet"
 
         packs_buffer_df = _pd.DataFrame()
-        num_packs_flushbuf = 2000
+        # TODO: finish implementing buffering strategy
+        max_pbuf_cnt = 2000
+        cur_pbuf_cnt = 0
 
         args = [
             self.sumobin,
@@ -325,8 +330,11 @@ class TraciController:
         if self.emergency_insertions:
             args.extend(["--emergency-insert", "true"])
         args.append('--start')
-        self.print(f"{_Fore.WHITE}{_Style.DIM}Starting SUMO (with command: {' '.join(args)}){_Style.RESET_ALL}")
+        #self.print(f"{_Fore.WHITE}{_Style.DIM}Starting SUMO (with command: {' '.join(args)}){_Style.RESET_ALL}")
+        tmp = _sys.stdout
+        _sys.stdout = open(_os.devnull, 'w')
         _traci.start(args)
+        _sys.stdout = tmp
         laneIds = _traci.lane.getIDList()
         self.max_speed_per_lane = {lid: _traci.lane.getMaxSpeed(lid) for lid in laneIds}
         self.baseline_speed_per_lane = self.max_speed_per_lane.copy()
@@ -355,23 +363,28 @@ class TraciController:
                 if self.delay is not None:
                     _t.sleep(self.delay)
 
-            packs_buffer_df = _pd.concat([packs_buffer_df, pack.asPandas()], ignore_index=True)
-            self.labels_per_pid_df = _pd.concat([self.labels_per_pid_df, lb.asPandas(pn)], ignore_index=True)
+            pp = pack.asPandas()
+            if pp is not None:
+                packs_buffer_df = _pd.concat([packs_buffer_df, pp], ignore_index=True)
+                self.labels_per_pid_df = _pd.concat([self.labels_per_pid_df, lb.asPandas(pn)], ignore_index=True)
+                cur_pbuf_cnt += 1
 
-            if pn!=0 and pn % num_packs_flushbuf == 0 and not packs_buffer_df.empty:
+            if cur_pbuf_cnt >= max_pbuf_cnt:
                 # flush buffer to disk
                 pks_tbl = _pa.Table.from_pandas(packs_buffer_df)
                 pkwriter.write_table(pks_tbl)
                 packs_buffer_df = _pd.DataFrame()
+                cur_pbuf_cnt = 0
 
             if progress_queue is not None:
                 progress_queue.put(1)
         
         # empties buffer if not empty
-        if not packs_buffer_df.empty:
+        if cur_pbuf_cnt > 0:
             pks_tbl = _pa.Table.from_pandas(packs_buffer_df)
             pkwriter.write_table(pks_tbl)
             packs_buffer_df = _pd.DataFrame()
+            cur_pbuf_cnt = 0
         
         tend = _traci.simulation.getTime()
         self.tlog(f"Simulation ended at time {tend}, closing SUMO...")
