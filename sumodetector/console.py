@@ -97,13 +97,12 @@ def tar(src_folder:_Path):
     with _tarfile.open(tarpath, "w") as tar:
         tar.add(src_folder, arcname="data")
 
-def tctl_worker(gui,scfg,step_len,frame_pack_size,start_time_s,sim_time_s,on_collision,warnings,emergency_insertions,delay,*,queue:_mp.Queue,progress_queue:_mp.Queue, idx:int, excqueue:_mp.Queue, temp_path:_Path=None):
+def tctl_worker(gui,scfg,frame_pack_size,start_time_s,sim_time_s,on_collision,warnings,emergency_insertions,delay,*,queue:_mp.Queue,progress_queue:_mp.Queue, idx:int, excqueue:_mp.Queue, temp_path:_Path=None):
     # CONTROL THIS IMPLEMENTATION
     bp = temp_path if temp_path is not None else _Path.cwd()
     controller = TraciController(
         gui=gui,
         sumo_cfg=scfg,
-        step_len=step_len,
         frame_pack_size=frame_pack_size,
         start_time_s=start_time_s,
         sim_time_s=sim_time_s,
@@ -166,24 +165,18 @@ def tqdm_logger_worker(total_packs:int, pdonequeue:_mp.Queue):
 @_click.command()
 @_click.option('--gui','-g', is_flag=True, default=False, help='Run SUMO with GUI')
 @_click.option('--no-warnings', is_flag=True, default=False, help='Suppress SUMO warnings.')
-@_click.option('--no-emergency-insertions', is_flag=True, default=False, help='Disable insertion of emergency vehicles during simulation (default: False).')
-@_click.option('--step-len','-s', type=float, default=0.2, help='Length of each simulation step in seconds (default: 0.2s).')
+@_click.option('-E','--enable-emergency-insertions', 'enable_emergency_insertions', is_flag=True, default=False, help='Enable insertion of emergency vehicles during simulation (default: False).')
 @_click.option('--pack-size','-p', type=int, default=20, help='Number of frames in each pack (default: 20).')
-@_click.option('--sim-time','-t', type=float, default=500.0, help='Total simulation time in seconds (default: 500s).')
 @_click.option('--on-collision', type=_click.Choice(get_args(CollisionAction)), default=None, help='Action to take on collision (default: None).')
 @_click.option('--outdir', type=_click.Path(file_okay=False, dir_okay=True, writable=True), required=True, help='Output directory for label files (required).')
 @_click.option('--delay', '-d', type=float, default=None, help='Delay in ms between simulation steps (default: no delay).')
 @_click.option('--tar','tar_opt', is_flag=True, default=False, help='Create a tar archive of the output directory after simulation. No need for .gz compression since files are parquet format.')
 @_click.option('-M', '--multi-threaded', 'multi_threaded', is_flag=True, default=False, help='Whether to run the simulation in multi-threaded mode (default: False).')
 @_click.argument('cfg_path', type=_click.Path(exists=True), nargs=1)
-def runSimulation(gui, no_warnings, no_emergency_insertions, step_len, pack_size, sim_time, on_collision, cfg_path,outdir, delay, tar_opt, multi_threaded):
+def runSimulation(gui, no_warnings, enable_emergency_insertions, pack_size, on_collision, cfg_path,outdir, delay, tar_opt, multi_threaded):
     
     sumo_cfg = _SCFG(_Path(cfg_path))
-
-    if sumo_cfg.step_length_s is not None:
-        step_len = sumo_cfg.step_length_s
-    if sumo_cfg.duration_s is not None:
-        sim_time = sumo_cfg.duration_s
+    sumo_cfg.checkReqParams()
 
     outdir = _Path(outdir)
     if outdir.exists():
@@ -202,7 +195,7 @@ def runSimulation(gui, no_warnings, no_emergency_insertions, step_len, pack_size
     progress_queue = _mp.Queue()
     processes: list[_mp.Process] = []
 
-    sim_time_per_cpu = sim_time / nprocs
+    sim_time_per_cpu = sumo_cfg.duration_s / nprocs
     workers_cache_path = (sumo_cfg.sumocfg_file.parent / '.workers_tmp').resolve()
     if workers_cache_path.exists():
         _rmrf(workers_cache_path)
@@ -216,13 +209,12 @@ def runSimulation(gui, no_warnings, no_emergency_insertions, step_len, pack_size
         p = _mp.Process(target=tctl_worker, args=(
             gui,
             sumo_cfg,
-            step_len,
             pack_size,
             i * sim_time_per_cpu,
             sim_time_per_cpu,
             on_collision,
             not no_warnings,
-            not no_emergency_insertions,
+            enable_emergency_insertions,
             delay,
         ), kwargs={'queue': queue, 'progress_queue': progress_queue, 'idx': i, 'excqueue': excqueue, 'temp_path': workers_cache_path})
         processes.append(p)

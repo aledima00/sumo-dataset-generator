@@ -57,10 +57,10 @@ class TraciController:
     cfg:_SCFG
 
 
-    def __init__(self,*,gui:bool,sumo_cfg:_SCFG,step_len:float,frame_pack_size:int,sim_time_s:float,start_time_s:float,on_collision:CollisionAction='none',warnings:bool,emergency_insertions:bool,delay:float=None,active_labels:set[_LE],printfunc=None,tlog:bool=False):
+    def __init__(self,*,gui:bool,sumo_cfg:_SCFG,frame_pack_size:int,sim_time_s:float,start_time_s:float,on_collision:CollisionAction='none',warnings:bool,emergency_insertions:bool,delay:float=None,active_labels:set[_LE],printfunc=None,tlog:bool=False):
         self.gui = gui
         self.cfg = sumo_cfg
-        self.step_len = step_len
+        self.step_len = sumo_cfg.step_length_s
         self.frame_pack_size = frame_pack_size
         self.start_time_s = start_time_s
         self.sim_time_s = sim_time_s
