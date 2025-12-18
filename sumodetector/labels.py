@@ -26,9 +26,7 @@ shorts ={
 
 class MultiLabel:
     __encoded_labels:int
-    __active_labels:set[LabelsEnum]
-    def __init__(self,active_labels:set[LabelsEnum]=None):
-        self.__active_labels = active_labels if active_labels is not None else set(label for label in LabelsEnum)
+    def __init__(self):
         self.__encoded_labels = 0
 
     def setLabel(self,label:LabelsEnum,value:bool=True):
@@ -49,8 +47,6 @@ class MultiLabel:
             if (self.__encoded_labels & (1 << label.value)) != 0:
                 labels.add(label if not short else shorts[label])
         return labels
-    def checkLabelDone(self,label:LabelsEnum)->bool:
-        return ((label not in self.__active_labels) or ((self.__encoded_labels & (1 << label.value)) != 0))
     def asPandas(self, packID:int) -> _pd.DataFrame:
         return _pd.DataFrame([{
             "PackId": packID,

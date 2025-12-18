@@ -250,8 +250,6 @@ class TraciController:
                     self.vehs_lanes_no_junc_intlane[vid] = lane_id
     
     def __checkCollision(self,lb:_MLB) ->bool:
-        if lb.checkLabelDone(_LE.COLLISION):
-            return True
         clist = _traci.simulation.getCollidingVehiclesIDList()
         if len(clist)>0:
             self.tlog(f"Collision detected among vehicles: {clist}")
@@ -260,8 +258,6 @@ class TraciController:
         return False
 
     def __checkBraking(self,lb:_MLB) ->bool:
-        if lb.checkLabelDone(_LE.BRAKING):
-            return True
         vbs = []
         for vid in _traci.vehicle.getIDList():
             if not str(vid).startswith("OBS_"):
@@ -275,8 +271,6 @@ class TraciController:
         return False
             
     def __checkObstacles(self,lb:_MLB) ->bool:
-        if lb.checkLabelDone(_LE.OBSTACLE_IN_ROAD):
-            return True
         for vid in _traci.vehicle.getIDList():
             if str(vid).startswith("OBS_"):
                 self.tlog(f"Obstacle {vid} detected in simulation.")
@@ -285,8 +279,6 @@ class TraciController:
         return False
             
     def __checkTrafficJam(self,lb:_MLB) ->bool:
-        if lb.checkLabelDone(_LE.TRAFFIC_JAM):
-            return True
         for laneId in self.max_speed_per_lane.keys():
 
             vehs_in_lane:tuple[str] = _traci.lane.getLastStepVehicleIDs(laneId)
@@ -304,8 +296,6 @@ class TraciController:
         
 
     def __checkLCLM(self,lb:_MLB) ->bool:
-        if lb.checkLabelDone(_LE.LANE_CHANGE) and lb.checkLabelDone(_LE.LANE_MERGE):
-            return True
         for vid in _traci.vehicle.getIDList():
             if not str(vid).startswith("OBS_"):
                 lane_id = _traci.vehicle.getLaneID(vid)
@@ -315,20 +305,19 @@ class TraciController:
                     e2id = _traci.lane.getEdgeID(lane_id)
                     if e1id == e2id:
                         # generic lc situation
-                        if not lb.checkLabelDone(_LE.LANE_CHANGE):
-                            lb.setLabel(_LE.LANE_CHANGE)
+                        is_lc_lm = self.map_parser.checkIfLcLm(prev_lane_id,lane_id)
+                        if is_lc_lm:
+                            # lane merge situation
+                            self.tlog(f"Vehicle {vid} performed Lane Change corresponding to Lane Merge from lane {prev_lane_id} to {lane_id} on edge {e1id}.")
+                            lb.setLabel(_LE.LANE_MERGE)
+                        else:
+                            # simple lane change
                             self.tlog(f"Vehicle {vid} changed lane from {prev_lane_id} to {lane_id} on edge {e1id}.")
-                        if not lb.checkLabelDone(_LE.LANE_MERGE):
-                            is_lc_lm = self.map_parser.checkIfLcLm(prev_lane_id,lane_id)
-                            if is_lc_lm:
-                                lb.setLabel(_LE.LANE_MERGE)
-                                self.tlog(f"Vehicle {vid} performed Lane Change corresponding to Lane Merge from lane {prev_lane_id} to {lane_id} on edge {e1id}.")
+                            lb.setLabel(_LE.LANE_CHANGE)
                         return True
         return False
                     
     def __checkOvertake(self,lb:_MLB) ->bool:
-        if lb.checkLabelDone(_LE.OVERTAKE):
-            return True
         for vid in _traci.vehicle.getIDList():
             if not str(vid).startswith("OBS_"):
                 old_leader_id = self.vehs_leaders.get(vid,None)
@@ -340,8 +329,6 @@ class TraciController:
         return False
                         
     def __checkTurn(self,lb:_MLB) ->bool:
-        if lb.checkLabelDone(_LE.TURN_INTENT):
-            return True
         for vid in _traci.vehicle.getIDList():
             if not str(vid).startswith("OBS_"):
                 lane_id = _traci.vehicle.getLaneID(vid)
@@ -356,8 +343,6 @@ class TraciController:
         return False
                    
     def __checkPedestrianInRoad(self,lb:_MLB) ->bool:
-        if lb.checkLabelDone(_LE.PEDESTRIAN_IN_ROAD):
-            return True
         for pid in _traci.person.getIDList():
             laneid=_traci.person.getLaneID(pid)
             is_pedestrian_area, area_type = self.map_parser.isPedestrianArea(laneid)
@@ -479,7 +464,7 @@ class TraciController:
         laneIds = _traci.lane.getIDList()
         self.max_speed_per_lane = {lid: _traci.lane.getMaxSpeed(lid) for lid in laneIds}
         self.baseline_speed_per_lane = self.max_speed_per_lane.copy()
-        mlb = _MLB(active_labels=self.active_labels)
+        mlb = _MLB()
 
         if self.start_time_s > 0.0:
             self.tlog(f"Skipping to start time {self.start_time_s}s...")
