@@ -14,8 +14,9 @@ from typing import get_args
 import pandas as _pd
 import pyarrow as _pa
 import pyarrow.parquet as _pq
+from math import floor as _floor
 
-from .pack import PackData as _PKD
+from .pack import PackSchema as _PKS
 from .tracictl import TraciController, CollisionAction
 from .sumocfg import SumoCfg as _SCFG
 from .labels import LabelsEnum as _LE
@@ -61,7 +62,7 @@ def concatNoDuplicates(df1:_pd.DataFrame, df2:_pd.DataFrame, keycol:str)->_pd.Da
 def mergeDirs(dirpaths:list[_Path], outdir:_Path):
     lb_df = None
     vi_df = None
-    pkwriter = _pq.ParquetWriter(str(outdir / "packs.parquet"), _PKD.pyarrowSchema())
+    pkwriter = _pq.ParquetWriter(str(outdir / "packs.parquet"), _PKS())
     for dirpath in dirpaths:
         cur_lb_df = _pd.read_parquet(dirpath / "labels.parquet")
         cur_vi_df = _pd.read_parquet(dirpath / "vinfo.parquet")
@@ -153,11 +154,11 @@ def ctlworker(worker_processes:list[_mp.Process],excqueue:_mp.Queue):
             # timeout -> no exception found in 1s
             pass
 
-def tqdm_logger_worker(total_packs:int, pdonequeue:_mp.Queue):
-    progress=_tqdm(total=total_packs, desc="Simulation Progress", unit="packs")
+def tqdm_logger_worker(totFrames:int, doneQueue:_mp.Queue):
+    progress=_tqdm(total=totFrames, desc="Simulation Progress", unit="frames")
     done = 0
-    while done < total_packs:
-        val = pdonequeue.get()
+    while done < totFrames:
+        val = doneQueue.get()
         done += val
         progress.update(val)
     progress.close()
@@ -201,8 +202,8 @@ def runSimulation(gui, no_warnings, enable_emergency_insertions, pack_size, on_c
         _rmrf(workers_cache_path)
 
     # progress logger
-    tot_packs = ((sim_time_per_cpu / step_len) // pack_size) * nprocs
-    progress_logger_proc = _mp.Process(target=tqdm_logger_worker, args=(tot_packs, progress_queue))
+    tot_frames = (_floor(sim_time_per_cpu / sumo_cfg.step_length_s)) * nprocs
+    progress_logger_proc = _mp.Process(target=tqdm_logger_worker, args=(tot_frames, progress_queue))
     progress_logger_proc.start()
 
     for i in range(nprocs):

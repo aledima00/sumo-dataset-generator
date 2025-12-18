@@ -61,5 +61,11 @@ class MultiLabel:
         })
     def clear(self):
         self.__encoded_labels = 0
+    @staticmethod
+    def mergeList(labels_list:list['MultiLabel']) -> 'MultiLabel':
+        merged = MultiLabel()
+        for lbl in labels_list:
+            merged.__encoded_labels |= lbl.getEncoded()
+        return merged
     
 __all__ = ['LabelsEnum','MultiLabel']

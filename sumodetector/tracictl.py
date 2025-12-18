@@ -6,7 +6,7 @@ from pathlib import Path as _Path
 from .labels import LabelsEnum as _LE, MultiLabel as _MLB
 from .map import MapParser as _MP, PedestrianAreaType as _PAT
 from .sumocfg import SumoCfg as _SCFG
-from .pack import PackData as _PKD, FrameData as _FD, VehicleData as _VD, VInfo as _VI, PInfo as _PI
+from .pack import PackSchema as _PKS, pack2pandas as _p2df, Frame as _FR, VehicleData as _VD, VInfo as _VI, PInfo as _PI
 from colorama import Fore as _Fore, Style as _Style
 import re as _re
 import time as _t
@@ -18,6 +18,8 @@ import os as _os
 
 import pyarrow as _pa
 import pyarrow.parquet as _pq
+from collections import deque as _dq
+from typing import TypeAlias as _TA
     
 
 CollisionAction = _Lit["teleport", "warn", "none", "remove"]
@@ -28,6 +30,126 @@ def getStTypeFromVTypeID(vtype_id:str)->int:
         return int(match.group(1))
     else:
         raise ValueError(f"Invalid vType ID format: {vtype_id}")
+
+
+class PackBufferedWriter:
+    FramesListType: _TA = list[tuple[_FR,_MLB]]
+    FramesDequeType: _TA = _dq[tuple[_FR,_MLB]]
+    class FramesBuffer:
+        """
+        \\| Pack1... \\| Pack2... \\|
+        """
+        def __init__(self,frames_per_pack:int,packBuffer:'PackBufferedWriter'):
+            self.frames_per_pack = frames_per_pack
+            self.packBuffer = packBuffer
+            self.frames_buf: PackBufferedWriter.FramesDequeType = _dq()
+
+        def len(self)->int:
+            return len(self.frames_buf)
+        def isFull(self)->bool:
+            return len(self.frames_buf) >= self.frames_per_pack*2
+        def isReadyPack(self)->bool:
+            return len(self.frames_buf) >= self.frames_per_pack
+
+
+        def popFlistFromEnd(self)->'PackBufferedWriter.FramesListType':
+            frameslist = list(self.frames_buf)[-self.frames_per_pack:]
+            for _ in range(self.frames_per_pack):
+                self.frames_buf.pop()
+            return frameslist
+        
+        def popFlistFromBeginning(self)->'PackBufferedWriter.FramesListType':
+            frameslist = list(self.frames_buf)[:self.frames_per_pack]
+            for _ in range(self.frames_per_pack):
+                self.frames_buf.popleft()
+            return frameslist
+        
+        def appendFrame(self, frame:_FR, mlb:_MLB, triggered:bool):
+            self.frames_buf.append((frame, mlb))
+            if triggered:
+                # we have to borrow frames to make a pack with triggered frame as last
+                # if ready we send to PackBufferedWriter, otherwise we flush
+                if self.isReadyPack():
+                    flist = self.popFlistFromEnd()
+                    self.packBuffer.appendPackByFlist(flist)
+
+                    # check if still remains one complete (case of exactly 2 packs buffered with a triggered frame as last)
+                    if self.isReadyPack():
+                        flist = self.popFlistFromBeginning()
+                        self.packBuffer.appendPackByFlist(flist)
+                # flush all frames, if any remains
+                self.frames_buf.clear()
+            elif self.isFull():
+                flist = self.popFlistFromBeginning()
+                self.packBuffer.appendPackByFlist(flist)
+
+
+                
+    def __init__(self,save_dirpath:_Path,num_packs_buffered:int, frames_per_pack:int,*, startPackId:int=1):
+        self.packs_df = _pd.DataFrame()
+        self.labels_per_pid_df = _pd.DataFrame()
+        self.num_packs_buffered = num_packs_buffered
+        self.cnt = 0
+
+        self.pkpath = save_dirpath / "packs.parquet"
+        self.lbpath = save_dirpath / "labels.parquet"
+        self.vipath = save_dirpath / "vinfo.parquet"
+        self.pkwriter = _pq.ParquetWriter(str(self.pkpath), _PKS())
+        
+        self.last_pack_id = startPackId-1
+
+        self.frames_buffer = PackBufferedWriter.FramesBuffer(frames_per_pack=frames_per_pack, packBuffer=self)
+
+    def appendPackByFlist(self,framesList:FramesListType):
+        newpid = self.last_pack_id+1
+        dataList, mlbList = zip(*framesList)
+
+        p = _p2df(newpid, dataList)
+        if p is not None:
+            mlb = _MLB.mergeList(mlbList)
+            self.__appendPack(p)
+            self.__appendMlb(mlb, newpid)
+            self.last_pack_id = newpid
+
+    def __appendPack(self, packdf:_pd.DataFrame):
+        self.packs_df = _pd.concat([self.packs_df, packdf], ignore_index=True)
+        if self.cnt >= self.num_packs_buffered:
+            self.flushToDisk()
+        else:
+            self.cnt += 1
+
+    def __appendMlb(self,mlb:_MLB,pid:int):
+        self.labels_per_pid_df = _pd.concat([self.labels_per_pid_df, mlb.asPandas(pid)], ignore_index=True)
+
+
+    def flushToDisk(self):
+        pks_tbl = _pa.Table.from_pandas(self.packs_df)
+        self.pkwriter.write_table(pks_tbl)
+        self.packs_df = _pd.DataFrame()
+        self.cnt = 0
+
+    def appendFrame(self, frame:_FR, mlb:_MLB, triggered:bool):
+        self.frames_buffer.appendFrame(frame, mlb, triggered)
+
+    def len(self):
+        return self.cnt
+    def empty(self)->bool:
+        return self.cnt == 0
+
+    def close(self,*, dumpLabels:bool, dumpedVinfo:_pd.DataFrame|None):
+        if not self.empty():
+            self.flushToDisk()
+        self.pkwriter.close()
+        if dumpLabels:
+            self.dumpLabelsDf()
+        if dumpedVinfo is not None:
+            self.dumpVInfoDf(dumpedVinfo)
+        
+    def dumpLabelsDf(self):
+        return self.labels_per_pid_df.to_parquet(self.lbpath, index=False)
+    
+    def dumpVInfoDf(self,vinfo_df:_pd.DataFrame):
+        return vinfo_df.to_parquet(self.vipath, index=False)
 
 class TraciController:
     gui:bool
@@ -40,8 +162,7 @@ class TraciController:
     emergency_insertions:bool
     sumobin:str
     delay:float
-    total_steps:int
-    total_packs:int
+    total_frames:int
 
     max_speed_per_lane:dict[str,float]
     baseline_speed_per_lane:dict[str,float]
@@ -70,8 +191,7 @@ class TraciController:
         self.delay = delay
 
         self.sumobin = _sumolib.checkBinary('sumo-gui' if gui else 'sumo')
-        self.total_steps = _floor(self.sim_time_s / self.step_len)
-        self.total_packs = _floor(self.total_steps / self.frame_pack_size)
+        self.total_frames = _floor(self.sim_time_s / self.step_len)
 
         self.map_parser = _MP(str(self.cfg.net_file))
 
@@ -86,7 +206,6 @@ class TraciController:
         self.vehs_lanes = dict()
         self.vehs_lanes_no_junc_intlane = dict()
         self.vehs_leaders = dict()
-        self.labels_per_pid_df = _pd.DataFrame()
         self.vinfo_per_vid_df = _pd.DataFrame()
 
         self.active_labels = active_labels
@@ -130,7 +249,7 @@ class TraciController:
                 if not self.map_parser.isLaneSpecial(lane_id):
                     self.vehs_lanes_no_junc_intlane[vid] = lane_id
     
-    def __checkCollision(self,lb:_MLB)->bool:
+    def __checkCollision(self,lb:_MLB) ->bool:
         if lb.checkLabelDone(_LE.COLLISION):
             return True
         clist = _traci.simulation.getCollidingVehiclesIDList()
@@ -138,8 +257,9 @@ class TraciController:
             self.tlog(f"Collision detected among vehicles: {clist}")
             lb.setLabel(_LE.COLLISION)
             return True
+        return False
 
-    def __checkBraking(self,lb:_MLB)->bool:
+    def __checkBraking(self,lb:_MLB) ->bool:
         if lb.checkLabelDone(_LE.BRAKING):
             return True
         vbs = []
@@ -152,17 +272,19 @@ class TraciController:
                     self.tlog(f"Braking detected for vehicles: {vbs}")
                     lb.setLabel(_LE.BRAKING)
                     return True
+        return False
             
-    def __checkObstacles(self,lb:_MLB):
+    def __checkObstacles(self,lb:_MLB) ->bool:
         if lb.checkLabelDone(_LE.OBSTACLE_IN_ROAD):
             return True
         for vid in _traci.vehicle.getIDList():
             if str(vid).startswith("OBS_"):
                 self.tlog(f"Obstacle {vid} detected in simulation.")
                 lb.setLabel(_LE.OBSTACLE_IN_ROAD)
-                return 
+                return True
+        return False
             
-    def __checkTrafficJam(self,lb:_MLB):
+    def __checkTrafficJam(self,lb:_MLB) ->bool:
         if lb.checkLabelDone(_LE.TRAFFIC_JAM):
             return True
         for laneId in self.max_speed_per_lane.keys():
@@ -177,10 +299,11 @@ class TraciController:
             if ratio < self.slowdown_traffic_threshold:
                 self.tlog(f"Traffic jam detected on lane {laneId} with average speed {avg_speed:.2f} m/s ({ratio*100:.1f}% of baseline).")
                 lb.setLabel(_LE.TRAFFIC_JAM)
-                return
+                return True
+        return False
         
 
-    def __checkLCLM(self,lb:_MLB):
+    def __checkLCLM(self,lb:_MLB) ->bool:
         if lb.checkLabelDone(_LE.LANE_CHANGE) and lb.checkLabelDone(_LE.LANE_MERGE):
             return True
         for vid in _traci.vehicle.getIDList():
@@ -201,8 +324,9 @@ class TraciController:
                                 lb.setLabel(_LE.LANE_MERGE)
                                 self.tlog(f"Vehicle {vid} performed Lane Change corresponding to Lane Merge from lane {prev_lane_id} to {lane_id} on edge {e1id}.")
                         return True
+        return False
                     
-    def __checkOvertake(self,lb:_MLB):
+    def __checkOvertake(self,lb:_MLB) ->bool:
         if lb.checkLabelDone(_LE.OVERTAKE):
             return True
         for vid in _traci.vehicle.getIDList():
@@ -213,8 +337,9 @@ class TraciController:
                     lb.setLabel(_LE.OVERTAKE)
                     self.tlog(f"Detected Overtake of Vehicle {vid} on {old_leader_id}")
                     return True
+        return False
                         
-    def __checkTurn(self,lb:_MLB):
+    def __checkTurn(self,lb:_MLB) ->bool:
         if lb.checkLabelDone(_LE.TURN_INTENT):
             return True
         for vid in _traci.vehicle.getIDList():
@@ -228,8 +353,9 @@ class TraciController:
                         lb.setLabel(_LE.TURN_INTENT)
                         self.tlog(f"Vehicle {vid} performed turn from lane {prev_lane_id} to {lane_id}.")
                         return True
+        return False
                    
-    def __checkPedestrianInRoad(self,lb:_MLB):
+    def __checkPedestrianInRoad(self,lb:_MLB) ->bool:
         if lb.checkLabelDone(_LE.PEDESTRIAN_IN_ROAD):
             return True
         for pid in _traci.person.getIDList():
@@ -249,17 +375,34 @@ class TraciController:
                         lb.setLabel(_LE.PEDESTRIAN_IN_ROAD)
                         self.tlog(f"Detected Pedestrian {pid} in crossing with traffic light lane {laneid} without right of way")
                         return True
+        return False
                     
-                        
-    def __checkFrame(self,lb:_MLB):
-        self.__checkLCLM(lb)
-        self.__checkOvertake(lb)
-        self.__checkBraking(lb)
-        self.__checkTurn(lb)
-        self.__checkCollision(lb)
-        self.__checkPedestrianInRoad(lb)
-        self.__checkObstacles(lb)
-        self.__checkTrafficJam(lb)
+    def __checkFrameByLabel(self,lbname:_LE,mlb:_MLB)->bool:
+        if lbname == _LE.LANE_CHANGE or lbname == _LE.LANE_MERGE:
+            return self.__checkLCLM(mlb)
+        elif lbname == _LE.OVERTAKE:
+            return self.__checkOvertake(mlb)
+        elif lbname == _LE.BRAKING:
+            return self.__checkBraking(mlb)
+        elif lbname == _LE.TURN_INTENT:
+            return self.__checkTurn(mlb)
+        elif lbname == _LE.COLLISION:
+            return self.__checkCollision(mlb)
+        elif lbname == _LE.PEDESTRIAN_IN_ROAD:
+            return self.__checkPedestrianInRoad(mlb)
+        elif lbname == _LE.OBSTACLE_IN_ROAD:
+            return self.__checkObstacles(mlb)
+        elif lbname == _LE.TRAFFIC_JAM:
+            return self.__checkTrafficJam(mlb)
+        else:
+            raise ValueError(f"Unknown label {lbname}")
+        
+    def __checkFrame(self,mlb:_MLB) ->bool:
+        # trigger: at least one label detected
+        flag = False
+        for label in self.active_labels:
+            flag |= self.__checkFrameByLabel(label, mlb)
+        return flag
 
     
     def tryAddVInfo(self,vid:str,*,w:float=None,l:float=None,stType:int,pedestrian:bool=False):
@@ -276,11 +419,9 @@ class TraciController:
                 df = _VI(id=vid,stType=stType,width=w,length=l).asPandas()
             self.vinfo_per_vid_df = _pd.concat([self.vinfo_per_vid_df, df], ignore_index=True)
             return True
-            
-                        
     
-    def computeFrameData(self,*,id:int) -> _FD:
-        frame = _FD(id=id)
+    def computeFrame(self) -> _FR:
+        frame = _FR()
         for pid in _traci.person.getIDList():
             pos = _traci.person.getPosition(pid)
             speed = _traci.person.getSpeed(pid)
@@ -304,16 +445,14 @@ class TraciController:
     
     def run(self,save_dirpath:_Path,progress_queue:_mp.Queue=None):
 
-        pkpath = save_dirpath / "packs.parquet"
-        pkwriter = _pq.ParquetWriter(str(pkpath), _PKD.pyarrowSchema())
-        lbpath = save_dirpath / "labels.parquet"
-        vipath = save_dirpath / "vinfo.parquet"
+        pbw = PackBufferedWriter(
+            save_dirpath=save_dirpath,
+            num_packs_buffered=2000,
+            frames_per_pack=self.frame_pack_size,
+            startPackId=0
+        )
 
-        packs_buffer_df = _pd.DataFrame()
-        # TODO: finish implementing buffering strategy
-        max_pbuf_cnt = 2000
-        cur_pbuf_cnt = 0
-
+        # define parameters and start simulation
         args = [
             self.sumobin,
             "-c", str(self.cfg.sumocfg_file),
@@ -335,10 +474,12 @@ class TraciController:
         _sys.stdout = open(_os.devnull, 'w')
         _traci.start(args)
         _sys.stdout = tmp
+
+        # buffers
         laneIds = _traci.lane.getIDList()
         self.max_speed_per_lane = {lid: _traci.lane.getMaxSpeed(lid) for lid in laneIds}
         self.baseline_speed_per_lane = self.max_speed_per_lane.copy()
-        lb = _MLB(active_labels=self.active_labels)
+        mlb = _MLB(active_labels=self.active_labels)
 
         if self.start_time_s > 0.0:
             self.tlog(f"Skipping to start time {self.start_time_s}s...")
@@ -346,58 +487,28 @@ class TraciController:
             self.__updateState()
             _traci.simulationStep()
 
-        for pn in range(self.total_packs):
-            lb.clear()
-            pack = _PKD(id=pn)
+        # -------------------------- main simulation loop --------------------------
+        for fnum in range(self.total_frames):
+            mlb.clear()
+            _traci.simulationStep()
+            triggered = self.__checkFrame(mlb)
 
-            for fn in range(self.frame_pack_size):
-                _traci.simulationStep()
+            frameData = self.computeFrame()
+            pbw.appendFrame(frameData, mlb, triggered)
 
-                self.__checkFrame(lb)
-
-                frame_data = self.computeFrameData(id=fn)
-                pack.frames.append(frame_data)
-
-                # end of frame analysis: update and wait for next
-                self.__updateState()
-                if self.delay is not None:
-                    _t.sleep(self.delay)
-
-            pp = pack.asPandas()
-            if pp is not None:
-                packs_buffer_df = _pd.concat([packs_buffer_df, pp], ignore_index=True)
-                self.labels_per_pid_df = _pd.concat([self.labels_per_pid_df, lb.asPandas(pn)], ignore_index=True)
-                cur_pbuf_cnt += 1
-
-            if cur_pbuf_cnt >= max_pbuf_cnt:
-                # flush buffer to disk
-                pks_tbl = _pa.Table.from_pandas(packs_buffer_df)
-                pkwriter.write_table(pks_tbl)
-                packs_buffer_df = _pd.DataFrame()
-                cur_pbuf_cnt = 0
+            # end of frame analysis: update and wait for next
+            self.__updateState()
+            if self.delay is not None:
+                _t.sleep(self.delay)
 
             if progress_queue is not None:
                 progress_queue.put(1)
         
-        # empties buffer if not empty
-        if cur_pbuf_cnt > 0:
-            pks_tbl = _pa.Table.from_pandas(packs_buffer_df)
-            pkwriter.write_table(pks_tbl)
-            packs_buffer_df = _pd.DataFrame()
-            cur_pbuf_cnt = 0
-        
         tend = _traci.simulation.getTime()
         self.tlog(f"Simulation ended at time {tend}, closing SUMO...")
-        _traci.close() 
+        _traci.close()
 
         # save labels and vinfo to related .parquet files
-        self.labels_per_pid_df.to_parquet(lbpath, index=False)
-        self.vinfo_per_vid_df.to_parquet(vipath, index=False)
-        if pkwriter is not None:
-            pkwriter.close()
-
-
-
-        
+        pbw.close(dumpLabels=True,dumpedVinfo=self.vinfo_per_vid_df)
 
 __all__ = ['TraciController', 'CollisionAction']
