@@ -9,8 +9,10 @@ from sumolib.net.connection import Connection as _Conn
 from enum import Enum as _Enum
 import numpy as _np
 from numpy import linalg as _la
+import pandas as _pd
 
 import traci as _traci
+from .vectorMap import sumoNet2df as _sumoNet2df
 
 class PedestrianAreaType(_Enum):
     SIDEWALK = "sidewalk"
@@ -167,6 +169,11 @@ class MapParser:
                 return True, PedestrianAreaType.SIDEWALK
             else:
                 return False, None
+            
+
+    def asVectorDf(self)->_pd.DataFrame:
+        return _sumoNet2df(self.net)
+        
 
 
     # def getNodeByEdges(self,incoming_edge_id:str,outgoing_edge_id:str)->_Node|None:
