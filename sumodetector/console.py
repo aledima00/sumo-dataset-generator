@@ -20,6 +20,7 @@ from .pack import PackSchema as _PKS
 from .tracictl import TraciController, CollisionAction
 from .sumocfg import SumoCfg as _SCFG
 from .labels import LabelsEnum as _LE
+from .map import MapParser as _MP
 
 ACTIVE_LABELS = {
     _LE.LANE_CHANGE
@@ -173,8 +174,9 @@ def tqdm_logger_worker(totFrames:int, doneQueue:_mp.Queue):
 @_click.option('--delay', '-d', type=float, default=None, help='Delay in ms between simulation steps (default: no delay).')
 @_click.option('--tar','tar_opt', is_flag=True, default=False, help='Create a tar archive of the output directory after simulation. No need for .gz compression since files are parquet format.')
 @_click.option('-M', '--multi-threaded', 'multi_threaded', is_flag=True, default=False, help='Whether to run the simulation in multi-threaded mode (default: False).')
+@_click.option('--map-only', is_flag=True, default=False, help='Only extract the vector map without running the full simulation (default: False).')
 @_click.argument('cfg_path', type=_click.Path(exists=True), nargs=1)
-def runSimulation(gui, no_warnings, enable_emergency_insertions, pack_size, on_collision, cfg_path,outdir, delay, tar_opt, multi_threaded):
+def runSimulation(gui, no_warnings, enable_emergency_insertions, pack_size, on_collision, cfg_path,outdir, delay, tar_opt, multi_threaded, map_only):
     
     sumo_cfg = _SCFG(_Path(cfg_path))
     sumo_cfg.checkReqParams()
@@ -186,6 +188,11 @@ def runSimulation(gui, no_warnings, enable_emergency_insertions, pack_size, on_c
         outdir.with_suffix('.tar').unlink()
     outdir.mkdir(parents=True, exist_ok=True)
 
+    _MP(sumo_cfg.net_file.resolve()).asVectorDf().to_parquet(outdir / "vmap.parquet", index=False)
+    _click.echo(f"{_Fore.GREEN}Vector map extracted to {outdir / 'vmap.parquet'}.{_Style.RESET_ALL}")
+    if map_only:
+        return
+    
     start_time = _tpc()
 
     nprocs = _mp.cpu_count() // 2 if multi_threaded else 1
