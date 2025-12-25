@@ -7,80 +7,51 @@ from enum import IntEnum as _IE
 from typing import TypeAlias as _TA
 import pandas as _pd
 
-class TrafficCatEnum(_IE):
-    UNKNOWN = 0
-    EMERGENCY = 1
-    AUTHORITY = 2
-    ARMY = 3
-    PEDESTRIAN = 4
-    PASSENGER = 5
-    BICYCLE = 6
-
-    @classmethod
-    def fromStr(cls, scat:str):
-        match scat.lower():
-            case "emergency":
-                return cls.EMERGENCY
-            case "authority":
-                return cls.AUTHORITY
-            case "army":
-                return cls.ARMY
-            case "pedestrian":
-                return cls.PEDESTRIAN
-            case "passenger":
-                return cls.PASSENGER
-            case "bicycle":
-                return cls.BICYCLE
-            case _:
-                return cls.UNKNOWN
-            
-        
-    @classmethod
-    def encodeCategoriesStrAsUint8(cls, categories:set[str])->int:
-        enc = 0
-        for catstr in categories:
-            enc |= (1 << cls.fromStr(catstr).value)
-        return enc
-
-
 
 Point: _TA = tuple[float,float]
 Segment: _TA = tuple[Point,Point]
 
-
-class EdgeFuncType(_IE):
-    """Enum for different types of lanes."""
-    EDGE_UNKNOWN= 0
-    EDGE_NORMAL= 1
-    EDGE_JUNCTION_INTERNAL= 2
-    EDGE_CROSSING= 3
-    EDGE_WALKINGAREA= 4
-
-    @classmethod
-    def fromStr(cls,eftstr:str):
-        match eftstr.lower():
-            case "normal" | "connector":
-                return cls.EDGE_NORMAL
-            case "internal":
-                return cls.EDGE_JUNCTION_INTERNAL
-            case "crossing":
-                return cls.EDGE_CROSSING
-            case "walkingarea":
-                return cls.EDGE_WALKINGAREA
-            case _:
-                return cls.EDGE_UNKNOWN
 class Lane:
+    class LaneType(_IE):
+        LANE_NORMAL = 0 # DEFAULT
+        LANE_SIDEWALK = 1
+        LANE_CROSSING = 2
+        LANE_BICYCLE = 3
+        LANE_BUS = 4
+        LANE_WKAREA = 5
+
+        @staticmethod
+        def fromPermissionsAndFunction(permissions:set[str],function:str) -> 'Lane.LaneType':
+
+            lp = len(permissions) if permissions is not None else 0
+            
+            if function == 'crossing':
+                return Lane.LaneType.LANE_CROSSING
+            elif function == 'walkingarea':
+                return Lane.LaneType.LANE_WKAREA
+            elif lp==0:
+                return Lane.LaneType.LANE_NORMAL
+            elif lp == 1:
+                if 'pedestrian' in permissions:
+                    return Lane.LaneType.LANE_SIDEWALK
+                elif 'bicycle' in permissions:
+                    return Lane.LaneType.LANE_BICYCLE
+                elif 'bus' in permissions:
+                    return Lane.LaneType.LANE_BUS
+            else:
+                return Lane.LaneType.LANE_NORMAL
+    
     # data
-    allowedTrafficEnc: int
+    laneType: LaneType
     speed_limit: float
     width: float
     polyline_center: list[Segment]
 
     # priority: int|None
-    def __init__(self, allowedTrafficEnc:int, speed_limit:float, width:float):
-        self.allowedTrafficEnc = allowedTrafficEnc
+    def __init__(self, speed_limit:float, width:float, laneType:LaneType=None):
         self.speed_limit = speed_limit
         self.width = width
+        self.laneType = laneType if laneType is not None else Lane.LaneType.LANE_NORMAL
         self.polyline_center = []
 
     def addSegmentToCenterline(self, s:Segment):
@@ -107,7 +78,7 @@ class Lane:
         })
 
         
-        df["allowed_traffic_enc"] = _pd.Series(self.allowedTrafficEnc, index=df.index, dtype="uint8")
+        df["lane_type"] = _pd.Series(self.laneType.value, index=df.index, dtype="uint8")
         df["speed_limit"] = _pd.Series(self.speed_limit, index=df.index, dtype="float32")
         df["width"] = _pd.Series(self.width, index=df.index, dtype="float32")
 
@@ -127,10 +98,9 @@ def sumoNet2df(sumo_net:_Net)->_pd.DataFrame:
         df = _pd.DataFrame()
     return df
 
-def sumoEdge2df(sumo_edge:_Edge,*,function:bool=False)->_pd.DataFrame|None:
-    eid = sumo_edge.getID()
-    if function:
-        edge_function = EdgeFuncType.fromStr(sumo_edge.getFunction())
+def sumoEdge2df(sumo_edge:_Edge)->_pd.DataFrame|None:
+    #eid = sumo_edge.getID()
+    edgeFunction = sumo_edge.getFunction()
 
     # now loop over lanes to get lane-specific info
     sumo_lanes: list[_Lane] = sumo_edge.getLanes()
@@ -138,24 +108,20 @@ def sumoEdge2df(sumo_edge:_Edge,*,function:bool=False)->_pd.DataFrame|None:
     df = None
 
     for sumo_lane in sumo_lanes:
-        lane_df = sumoLane2df(sumo_lane)
+        lane_df = sumoLane2df(sumo_lane, edgeFunction=edgeFunction)
         if df is None:
             df = lane_df
         elif lane_df is not None:
             df = _pd.concat([df, lane_df], ignore_index=True)
     
-
-    if df is not None:
-        # add edge-wise info to df
-        if function:
-            df["edge_function"] = _pd.Series(edge_function, index=df.index, dtype="uint8")
-        df["edge_id"] = _pd.Series(eid, index=df.index, dtype="string")
-    
     return df
 
-def sumoLane2df(sumo_lane:_Lane)->_pd.DataFrame|None:
-    # determine allowed traffic
-    allowed_traffic_enc = TrafficCatEnum.encodeCategoriesStrAsUint8(sumo_lane.getPermissions())
+def sumoLane2df(sumo_lane:_Lane, edgeFunction:str)->_pd.DataFrame|None:
+    # determine lane type
+    lane_type = Lane.LaneType.fromPermissionsAndFunction(
+        permissions=sumo_lane.getPermissions(),
+        function=edgeFunction
+    )
     
     # speed limit
     speed_limit = sumo_lane.getSpeed()
@@ -164,7 +130,7 @@ def sumoLane2df(sumo_lane:_Lane)->_pd.DataFrame|None:
     width = sumo_lane.getWidth()
     
     # create Lane object
-    laneobj = Lane(allowed_traffic_enc, speed_limit, width)
+    laneobj = Lane(speed_limit, width, laneType=lane_type)
 
     # centerline polyline
     centerline_coords = sumo_lane.getShape(includeJunctions=True)
