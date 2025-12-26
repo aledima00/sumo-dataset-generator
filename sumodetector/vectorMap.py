@@ -46,14 +46,17 @@ class Lane:
     speed_limit: float
     width: float
     polyline_center: list[Segment]
+    canGoLeft: bool
+    canGoRight: bool
 
     # priority: int|None
-    def __init__(self, speed_limit:float, width:float, laneType:LaneType=None):
+    def __init__(self, speed_limit:float, width:float, laneType:LaneType=None, canGoLeft:bool=False, canGoRight:bool=False):
         self.speed_limit = speed_limit
         self.width = width
         self.laneType = laneType if laneType is not None else Lane.LaneType.LANE_NORMAL
         self.polyline_center = []
-
+        self.canGoLeft = canGoLeft
+        self.canGoRight = canGoRight
     def addSegmentToCenterline(self, s:Segment):
         slast = None if len(self.polyline_center) == 0 else self.polyline_center[-1]
         if slast is not None and slast[1] != s[0]:
@@ -81,6 +84,8 @@ class Lane:
         df["lane_type"] = _pd.Series(self.laneType.value, index=df.index, dtype="uint8")
         df["speed_limit"] = _pd.Series(self.speed_limit, index=df.index, dtype="float32")
         df["width"] = _pd.Series(self.width, index=df.index, dtype="float32")
+        df["can_go_left"] = _pd.Series(self.canGoLeft, index=df.index, dtype="bool")
+        df["can_go_right"] = _pd.Series(self.canGoRight, index=df.index, dtype="bool")
 
         return df
     
@@ -104,11 +109,12 @@ def sumoEdge2df(sumo_edge:_Edge)->_pd.DataFrame|None:
 
     # now loop over lanes to get lane-specific info
     sumo_lanes: list[_Lane] = sumo_edge.getLanes()
+    num_lanes = len(sumo_lanes)
 
     df = None
 
     for sumo_lane in sumo_lanes:
-        lane_df = sumoLane2df(sumo_lane, edgeFunction=edgeFunction)
+        lane_df = sumoLane2df(sumo_lane, edgeFunction=edgeFunction, edge_lane_nums=num_lanes)
         if df is None:
             df = lane_df
         elif lane_df is not None:
@@ -116,7 +122,7 @@ def sumoEdge2df(sumo_edge:_Edge)->_pd.DataFrame|None:
     
     return df
 
-def sumoLane2df(sumo_lane:_Lane, edgeFunction:str)->_pd.DataFrame|None:
+def sumoLane2df(sumo_lane:_Lane, edgeFunction:str, edge_lane_nums:int)->_pd.DataFrame|None:
     # determine lane type
     lane_type = Lane.LaneType.fromPermissionsAndFunction(
         permissions=sumo_lane.getPermissions(),
@@ -128,9 +134,14 @@ def sumoLane2df(sumo_lane:_Lane, edgeFunction:str)->_pd.DataFrame|None:
 
     # width
     width = sumo_lane.getWidth()
+
+    # lane can go left/right
+    edge_idx = sumo_lane.getIndex()
+    canGoLeft = edge_idx > 0
+    canGoRight = edge_idx < (edge_lane_nums - 1)
     
     # create Lane object
-    laneobj = Lane(speed_limit, width, laneType=lane_type)
+    laneobj = Lane(speed_limit, width, laneType=lane_type, canGoLeft=canGoLeft, canGoRight=canGoRight)
 
     # centerline polyline
     centerline_coords = sumo_lane.getShape(includeJunctions=True)
