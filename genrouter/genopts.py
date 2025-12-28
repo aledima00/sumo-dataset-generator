@@ -89,7 +89,7 @@ class GenOptions:
     VehicleParams: list[dict] = _field(default_factory=list)
     IndividualParams: list[dict] = _field(default_factory=list)
     ClassParams: list[dict] = _field(default_factory=list)
-    ProportionalModifiers: list[dict] = _field(default_factory=list)
+    Modifiers: list[dict] = _field(default_factory=list)
     PersonParams: list[dict] = _field(default_factory=list)
 
     @staticmethod
@@ -150,8 +150,8 @@ class GenOptions:
         return _ld_to_dt(self.ClassParams,str)
     def PPDict(self)->dict:
         return _ld_to_dt(self.PersonParams,_PP)
-    def PMDict(self)->dict:
-        return _ld_to_dt(self.ProportionalModifiers,dict)
+    def ModDict(self)->dict:
+        return _ld_to_dt(self.Modifiers,dict)
 
     def print(self):
         print("Generation Options:")

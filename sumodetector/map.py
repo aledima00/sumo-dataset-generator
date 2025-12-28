@@ -14,12 +14,6 @@ import pandas as _pd
 import traci as _traci
 from .vectorMap import sumoNet2df as _sumoNet2df
 
-class PedestrianAreaType(_Enum):
-    SIDEWALK = "sidewalk"
-    WALKINGAREA = "walkingarea"
-    CROSSING_NORMAL = "crossing"
-    CROSSING_TLS = "crossing_tls"
-
 
 @_dc
 class LaneMergeJunction:
@@ -137,39 +131,6 @@ class MapParser:
         # lc is lm if the lc correspond to different outgoing edges after the lane merge junction
         return out_e_from != out_e_to
     
-    def isPedestrianArea(self,lane_id:str)->tuple[bool,PedestrianAreaType|None]:
-        """
-        Check if the given lane belongs to a pedestrian area, that is either
-        - a "sidewalk" restricted lane
-        - a lane from a "walkingarea" edge
-        - a lane from a "crossing" edge
-        """
-        if lane_id is None:
-            raise ValueError("lane_id cannot be None")
-        lane: _Lane = self.net.getLane(lane_id)
-        if lane is None:
-            raise ValueError(f"lane with id {lane_id} not found in the network")
-        edge: _Edge = lane.getEdge()
-        
-        if edge.getFunction() == "crossing":
-            return True, PedestrianAreaType.CROSSING_NORMAL
-            trueConn: _Conn = lane.getConnection()
-            if trueConn is None:
-                raise ValueError(f"lane with id {lane_id} has no connection, cannot determine if crossing with tls")
-            tlsind = trueConn.getTLLinkIndex()
-            if tlsind is not None and tlsind >= 0:
-                return True, PedestrianAreaType.CROSSING_TLS
-            else:
-                return True, PedestrianAreaType.CROSSING_NORMAL
-        elif edge.getFunction() == "walkingarea":
-            return True, PedestrianAreaType.WALKINGAREA
-        else:
-            allowed = lane.getPermissions()
-            if allowed is not None and len(allowed) == 1 and "pedestrian" in allowed:
-                return True, PedestrianAreaType.SIDEWALK
-            else:
-                return False, None
-            
 
     def asVectorDf(self)->_pd.DataFrame:
         return _sumoNet2df(self.net)

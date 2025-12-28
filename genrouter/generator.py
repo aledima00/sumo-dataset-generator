@@ -56,7 +56,8 @@ class Generator:
         self.vp_probabs = gparams.VPDict()
         self.vcl_probabs = gparams.VCLDict()
         self.prs_params = gparams.PPDict()
-        self.probabilistic_mod_multipliers = gparams.PMDict()
+        self.modifiers = gparams.ModDict()
+        self.steplen= gparams.steplen
         self.source_edge_ids = gparams.source_edges
         self.vtypes = self.__gen_vtypes()
         self.ptypes = self.__gen_ptypes()
@@ -149,14 +150,22 @@ class Generator:
         
     def apply_random_modificators(self,vt:_VT)->_VT:
         nvt = vt.copy()
-        for modname,moddata in self.probabilistic_mod_multipliers.items():
+        for modname,moddata in self.modifiers.items():
             p,mods = moddata
             if _RND.random() <= p:
-                for attr,mult in mods.items():
-                    if hasattr(nvt.vp,attr):
-                        setattr(nvt.vp,attr,getattr(nvt.vp,attr)*mult)
-                    elif hasattr(nvt.ip,attr):
-                        setattr(nvt.ip,attr,getattr(nvt.ip,attr)*mult)
+                match modname:
+                    case "DISTRACTED_DRIVER":
+                        reactionTimeMult = mods.get("reactionTimeMult",None)
+                        if reactionTimeMult is not None:
+                            nvt.ip.actionStepLength = reactionTimeMult * self.steplen
+                    case "BROKEN_BRAKES":
+                        brkRatio = mods.get("brkRatio",None)
+                        if brkRatio is not None:
+                            nvt.vp.decel *= brkRatio
+                            nvt.vp.emergency_decel *= brkRatio
+                            # apparent decel is higher than decel!!
+                    case _:
+                        raise ValueError(f"Unknown modificator: {modname}")
                 nvt.name += f"_{modname}"
         return nvt
     

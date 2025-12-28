@@ -22,9 +22,8 @@ from .sumocfg import SumoCfg as _SCFG
 from .labels import LabelsEnum as _LE
 from .map import MapParser as _MP
 
-ACTIVE_LABELS = {
-    _LE.LANE_CHANGE
-}
+
+ACTIVE_LABELS = set()
 
 
 def getMaxPackId(df:_pd.DataFrame)->int:
@@ -164,6 +163,11 @@ def tqdm_logger_worker(totFrames:int, doneQueue:_mp.Queue):
         progress.update(val)
     progress.close()
 
+def setActiveLabels(labels:set[_LE]):
+    global ACTIVE_LABELS
+    ACTIVE_LABELS.clear()
+    ACTIVE_LABELS.update(labels)
+
 @_click.command()
 @_click.option('--gui','-g', is_flag=True, default=False, help='Run SUMO with GUI')
 @_click.option('--no-warnings', is_flag=True, default=False, help='Suppress SUMO warnings.')
@@ -177,7 +181,8 @@ def tqdm_logger_worker(totFrames:int, doneQueue:_mp.Queue):
 @_click.option('--map-only', is_flag=True, default=False, help='Only extract the vector map without running the full simulation (default: False).')
 @_click.argument('cfg_path', type=_click.Path(exists=True), nargs=1)
 def runSimulation(gui, no_warnings, enable_emergency_insertions, pack_size, on_collision, cfg_path,outdir, delay, tar_opt, multi_threaded, map_only):
-    
+    global ACTIVE_LABELS
+    print(f"active labels: {ACTIVE_LABELS}")
     sumo_cfg = _SCFG(_Path(cfg_path))
     sumo_cfg.checkReqParams()
 

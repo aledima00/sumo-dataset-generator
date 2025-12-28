@@ -13,6 +13,8 @@ class IParams:
     speedDev:float = 0.1
     minGap:float = 2.5
 
+    actionStepLength: float = None
+
     # lane change parameters - keep default for majority of cases
     lcStrategic:float=2.0 # how much to exploit lc to reach destinations
     lcCooperative:float=0.5 # how much to perform lc in a cooperative manner
@@ -45,7 +47,6 @@ class IParams:
         return IParams(**_asdict(self))
 
 
-
 @_dc
 class VParams:
     stType: int = _ST.PASSENGER_CAR.value
@@ -56,10 +57,13 @@ class VParams:
     max_speed:float = 180.0 
     kmh:bool = True
     gui_shape:str = "passenger"
+    apparent_decel:float = None  # if set
 
     def __post_init__(self):
         if self.kmh:
             self.max_speed = self.max_speed / 3.6  # convert km/h to m/s
+        if self.apparent_decel is None:
+            self.apparent_decel = self.decel
 
     def copy(self):
         return VParams(**_asdict(self))
@@ -81,9 +85,10 @@ class VType:
     def id(self) -> str:
         return f"ST{self.station_type.value:03d}_{self.name}"
     def xml(self):
-        x = f'<vType id="{self.id}" accel="{self.vp.accel:.4e}" decel="{self.vp.decel:.4e}" emergencyDecel="{self.vp.emergency_decel:.4e}" length="{self.vp.length_m:.4e}" maxSpeed="{self.vp.max_speed:.4e}" vClass="{self.vcl}" guiShape="{self.vp.gui_shape}"'
+        x = f'<vType id="{self.id}" accel="{self.vp.accel:.4e}" decel="{self.vp.decel:.4e}" emergencyDecel="{self.vp.emergency_decel:.4e}" length="{self.vp.length_m:.4e}" maxSpeed="{self.vp.max_speed:.4e}" vClass="{self.vcl}" guiShape="{self.vp.gui_shape}" apparentDecel="{self.vp.apparent_decel:.4e}"'
         for k,v in self.ip.__dict__.items():
-            x += f' {k}="{v:.4e}"'
+            if v is not None:
+                x += f' {k}="{v:.4e}"'
         for k,v in self.additional_attributes.items():
             x += f' {k}="{v}"'
         

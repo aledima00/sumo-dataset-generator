@@ -3,25 +3,23 @@ import pandas as _pd
 
 class LabelsEnum(_IE):
     LANE_CHANGE = 0
-    LANE_MERGE = 1
+    EMERGENCY_BRAKING = 1
     OVERTAKE = 2
-    BRAKING = 3
-    TURN_INTENT = 4
-    COLLISION = 5
-    PEDESTRIAN_IN_ROAD = 6
-    OBSTACLE_IN_ROAD = 7
-    TRAFFIC_JAM = 8
+    TURN_INTENT = 3
+    COLLISION = 4
+    LANE_MERGE = 5
+    OBSTACLE_IN_ROAD = 6
+    SLOWDOWN = 7
 
 shorts ={
     LabelsEnum.LANE_CHANGE: "LCH",
-    LabelsEnum.LANE_MERGE: "LMG",
+    LabelsEnum.EMERGENCY_BRAKING: "EBK",
     LabelsEnum.OVERTAKE: "OTK",
-    LabelsEnum.BRAKING: "BRK",
     LabelsEnum.TURN_INTENT: "TRN",
     LabelsEnum.COLLISION: "COL",
-    LabelsEnum.PEDESTRIAN_IN_ROAD: "PIR",
+    LabelsEnum.LANE_MERGE: "LMG",
     LabelsEnum.OBSTACLE_IN_ROAD: "OIR",
-    LabelsEnum.TRAFFIC_JAM: "TJM"
+    LabelsEnum.SLOWDOWN: "SLD"
 }
 
 class MultiLabel:

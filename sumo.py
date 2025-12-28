@@ -1,4 +1,6 @@
-from sumodetector import runSimulation
+import sumodetector.console as sumoDetConsole
+from sumodetector.labels import LabelsEnum as _LE
 
 if __name__ == "__main__":
-    labels = runSimulation()
+    sumoDetConsole.setActiveLabels( {_LE.EMERGENCY_BRAKING} )
+    sumoDetConsole.runSimulation()

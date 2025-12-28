@@ -4,7 +4,7 @@ import traci as _traci
 from typing import Literal as _Lit
 from pathlib import Path as _Path
 from .labels import LabelsEnum as _LE, MultiLabel as _MLB
-from .map import MapParser as _MP, PedestrianAreaType as _PAT
+from .map import MapParser as _MP
 from .sumocfg import SumoCfg as _SCFG
 from .pack import PackSchema as _PKS, pack2pandas as _p2df, Frame as _FR, VehicleData as _VD, VInfo as _VI, PInfo as _PI
 from colorama import Fore as _Fore, Style as _Style
@@ -208,6 +208,7 @@ class TraciController:
         self.vehs_leaders = dict()
         self.vinfo_per_vid_df = _pd.DataFrame()
 
+        # utilities
         self.active_labels = active_labels
         self.print = printfunc if printfunc is not None else (lambda x: None)
         self.__tlog_enabled = tlog
@@ -218,15 +219,14 @@ class TraciController:
 
 
     @staticmethod
-    def __getVehEdge(vid:str)->str:
+    def __getVehEdge(vid:str)->str|None:
         if vid is None or vid not in _traci.vehicle.getIDList():
             return None
         lid = _traci.vehicle.getLaneID(vid)
-        eid = _traci.lane.getEdgeID(lid)
-        return eid
+        return _traci.lane.getEdgeID(lid) if lid is not None else None
 
     @staticmethod
-    def __getRealEdgeLeader(vid:str)->str:
+    def __getRealEdgeLeader(vid:str)->str|None:
         eid = TraciController.__getVehEdge(vid)
         vehs = sorted(filter( lambda x: not str(x).startswith("OBS_"), _traci.edge.getLastStepVehicleIDs(eid)),key=lambda x: _traci.vehicle.getLanePosition(x))
 
@@ -257,7 +257,7 @@ class TraciController:
             return True
         return False
 
-    def __checkBraking(self,lb:_MLB) ->bool:
+    def __checkEmergencyBraking(self,lb:_MLB) ->bool:
         vbs = []
         for vid in _traci.vehicle.getIDList():
             if not str(vid).startswith("OBS_"):
@@ -278,7 +278,7 @@ class TraciController:
                 return True
         return False
             
-    def __checkTrafficJam(self,lb:_MLB) ->bool:
+    def __checkSlowdown(self,lb:_MLB) ->bool:
         for laneId in self.max_speed_per_lane.keys():
 
             vehs_in_lane:tuple[str] = _traci.lane.getLastStepVehicleIDs(laneId)
@@ -290,7 +290,7 @@ class TraciController:
             ratio = avg_speed / self.baseline_speed_per_lane[laneId]
             if ratio < self.slowdown_traffic_threshold:
                 self.tlog(f"Traffic jam detected on lane {laneId} with average speed {avg_speed:.2f} m/s ({ratio*100:.1f}% of baseline).")
-                lb.setLabel(_LE.TRAFFIC_JAM)
+                lb.setLabel(_LE.SLOWDOWN)
                 return True
         return False
         
@@ -341,44 +341,22 @@ class TraciController:
                         self.tlog(f"Vehicle {vid} performed turn from lane {prev_lane_id} to {lane_id}.")
                         return True
         return False
-                   
-    def __checkPedestrianInRoad(self,lb:_MLB) ->bool:
-        for pid in _traci.person.getIDList():
-            laneid=_traci.person.getLaneID(pid)
-            is_pedestrian_area, area_type = self.map_parser.isPedestrianArea(laneid)
-            if not is_pedestrian_area:
-                lb.setLabel(_LE.PEDESTRIAN_IN_ROAD)
-                self.tlog(f"Detected Pedestrian {pid} in road lane {laneid}")
-                return True
-            elif area_type==_PAT.CROSSING_TLS:
-                # if crossing with tls, further check if it has right of way
-                links = _traci.lane.getLinks(laneid, extended=True)
-                for (succLane, hasPrio, isOpen, hasFoe, *_) in links:
-                    # isOpen=True => semaforo verde o priorità libera
-                    # hasFoe=False => nessuna lane conflittuale con precedenza
-                    if (not isOpen) or hasFoe:
-                        lb.setLabel(_LE.PEDESTRIAN_IN_ROAD)
-                        self.tlog(f"Detected Pedestrian {pid} in crossing with traffic light lane {laneid} without right of way")
-                        return True
-        return False
                     
     def __checkFrameByLabel(self,lbname:_LE,mlb:_MLB)->bool:
         if lbname == _LE.LANE_CHANGE or lbname == _LE.LANE_MERGE:
             return self.__checkLCLM(mlb)
         elif lbname == _LE.OVERTAKE:
             return self.__checkOvertake(mlb)
-        elif lbname == _LE.BRAKING:
-            return self.__checkBraking(mlb)
+        elif lbname == _LE.EMERGENCY_BRAKING:
+            return self.__checkEmergencyBraking(mlb)
         elif lbname == _LE.TURN_INTENT:
             return self.__checkTurn(mlb)
         elif lbname == _LE.COLLISION:
             return self.__checkCollision(mlb)
-        elif lbname == _LE.PEDESTRIAN_IN_ROAD:
-            return self.__checkPedestrianInRoad(mlb)
         elif lbname == _LE.OBSTACLE_IN_ROAD:
             return self.__checkObstacles(mlb)
-        elif lbname == _LE.TRAFFIC_JAM:
-            return self.__checkTrafficJam(mlb)
+        elif lbname == _LE.SLOWDOWN:
+            return self.__checkSlowdown(mlb)
         else:
             raise ValueError(f"Unknown label {lbname}")
         
