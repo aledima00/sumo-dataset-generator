@@ -205,7 +205,7 @@ class TraciController:
 
         # TODO:CHECK these values
         self.ebk_acc_threshold = -5.0 # m/s²
-        self.ebk_time_threshold_s = 0.2
+        self.ebk_time_threshold_s = 0.1 #TODO:CHECK if it's ok to use time-based threshold for this
         self.merge_speed_threshold = 0.3
         self.slowdown_traffic_threshold = 0.1
         self.traffic_jam_min_size = 8

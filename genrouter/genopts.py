@@ -34,12 +34,10 @@ def _printFormatted(elm,indent:int=0):
         case _:
             _indp(f"{elm}", indnl=indent)
 
-def _dc_or_dict_asdict(elm)->dict:
-    return elm if type(elm) is dict else _asdict(elm)
 
-def _normalize_dict(ld:list[dict],factory):
+def _normalize_dict(ld:list[dict]):
     if len(ld)==0:
-        ld.append(_dc_or_dict_asdict(factory()))
+        ld.append(dict())
         ld[0]["p"] = 1.0
         ld[0]["name"] = "DEFAULT"
         return
@@ -49,8 +47,6 @@ def _normalize_dict(ld:list[dict],factory):
         dtmp = ld[i].copy()
         del dtmp["p"]
         del dtmp["name"]
-        dtmp = factory(**dtmp)
-        dtmp = _dc_or_dict_asdict(dtmp)
         dtmp["p"] = ld[i].get("p",0.0) / totalp if totalp > 0 else 0
         dtmp["name"] = ld[i].get("name")
         if dtmp["name"] is None:
@@ -123,10 +119,10 @@ class GenOptions:
                 else:
                     setattr(self,k,v)
 
-        _normalize_dict(self.VehicleParams, factory=_VP)
-        _normalize_dict(self.IndividualParams,factory=_IP)
-        _normalize_dict(self.ClassParams,factory=dict) # to be done
-        _normalize_dict(self.PersonParams,factory=_PP)
+        _normalize_dict(self.VehicleParams)
+        _normalize_dict(self.IndividualParams)
+        _normalize_dict(self.ClassParams) # to be done
+        _normalize_dict(self.PersonParams)
     
     def dump(self,yaml_path:_Path):
         options_dict = _asdict(self)

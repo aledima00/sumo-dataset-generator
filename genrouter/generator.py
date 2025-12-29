@@ -30,7 +30,10 @@ ObstacleVtype = _VT(
     ip=_IP(
         minGap=0.0,
         speedFactor=0.0,
-        speedDev=0.0
+        speedDev=0.0,
+        lcAggressiveness=0.0,
+        lcGreediness=0.0,
+        jcAggressiveness=0.0
     ),
     additional_attributes={
         "color":"1,0,0",
@@ -157,13 +160,14 @@ class Generator:
                     case "DISTRACTED_DRIVER":
                         reactionTimeMult = mods.get("reactionTimeMult",None)
                         if reactionTimeMult is not None:
-                            nvt.ip.actionStepLength = reactionTimeMult * self.steplen
-                    case "BROKEN_BRAKES":
+                            #TODO:CHECK if it is better to directly provide the new value instead of a multiplier
+                            nvt.ip.setActionStepLength(reactionTimeMult * self.steplen)
+                    case "UNEXPECTED_DECEL":
                         brkRatio = mods.get("brkRatio",None)
                         if brkRatio is not None:
                             nvt.vp.decel *= brkRatio
                             nvt.vp.emergency_decel *= brkRatio
-                            # apparent decel is higher than decel!!
+                            # apparent decel is different than decel!!
                     case _:
                         raise ValueError(f"Unknown modificator: {modname}")
                 nvt.name += f"_{modname}"

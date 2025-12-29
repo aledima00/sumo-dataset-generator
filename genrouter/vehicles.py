@@ -1,50 +1,116 @@
 from dataclasses import dataclass as _dc, field as _field, asdict as _asdict
 from .station import StationType as _ST
-@_dc
+from .mappingFunctions import mapping_functions as _mf
+_mf.setEps(1e-6)
+
 class IParams:
     """
     Generic parameters for the individual driver behavior.
     - speedFactor: multiplier for the speed of the vehicle
     - speedDev: deviation for the speed of the vehicle
     - minGap: minimum gap to the leading vehicle in meters
-    Other parameters are related to lane changing and junction behavior.
+    Other parameters are related to lane change and junction behavior.
     """
-    speedFactor:float = 1.0
-    speedDev:float = 0.1
-    minGap:float = 2.5
 
-    actionStepLength: float = None
+    def __init__(self,speedFactor:float=1.0,speedDev:float=0.1,minGap:float=2.5, lcAggressiveness:float=0.1, lcGreediness:float=0.5, jcAggressiveness:float=0.1):
+        self.generalDict = {
+            "speedFactor": speedFactor,
+            "speedDev": speedDev,
+            "minGap": minGap
+        }
+        self.lcAggressivenessDict = dict()
+        self.lcGreedinessDict = dict()
+        self.jcAggressivenessDict = dict()
 
-    # lane change parameters - keep default for majority of cases
-    lcStrategic:float=2.0 # how much to exploit lc to reach destinations
-    lcCooperative:float=0.5 # how much to perform lc in a cooperative manner
-    lcSpeedGain:float=2.0 # how much to exploit lc for speed gain
-    lcKeepRight:float=0.7 # how much [0-inf) to return right by default
-    lcContRight:float=0.85 # how much [0-1] to choose rightmost lane when available
-    lcOvertakeRight:float=0.01 # probability [0-1] to overtake on the right
-    lcOpposite:float=0.2 # how much [0-inf) to exploit opposite lane while overtaking
-    #lcStrategicLookahead:float=3000.0
-    #lcLookaheadLeft:float=2.0
-    #lcSpeedGainRight:float=0.1
-    lcSpeedGainLookahead:float=4.0 # time in seconds to anticipate slowdowns 
-    lcSpeedGainRemainTime:float=20.0 # after strategic lc, how much time to return on lane if no longer needed
-    #lcSpeedGainUrgency:float=50.0
-    lcAssertive:float=1.0 # willingness [0-inf) to acccept smaller gaps when changing lane
-    lcSigma:float=0.5 # imperfection in lateral positioning
+        self.setLcAggressiveness(lcAggressiveness)
+        self.setLcGreediness(lcGreediness)
+        self.setJcAggressiveness(jcAggressiveness)
+
+    def setLcAggressiveness(self,lc_aggressiveness):
+        assert 0.0 <= lc_aggressiveness <= 1.0, "lc_aggressiveness must be in [0-1]"
+        self.__lc_aggressiveness = lc_aggressiveness
+
+        self.lcAggressivenessDict["lcCooperative"] = _mf.neglin_01_scaled(lc_aggressiveness) # how much to perform lc in a cooperative manner
+        self.lcAggressivenessDict["lcOvertakeRight"] = _mf.exp_01_10(lc_aggressiveness,strength=5.0) # probability to overtake on the right
+        self.lcAggressivenessDict["lcOpposite"] = _mf.inv_01_0inf(lc_aggressiveness,strength=5.0) # how much [0-inf) to exploit opposite lane while overtaking
+        self.lcAggressivenessDict["lcSigma"] = _mf.lin_01_scaled(lc_aggressiveness,min_val=0.1,max_val=0.8) # lc imperfection in lateral positioning
+        self.lcAggressivenessDict["lcAssertive"] = _mf.inv_01_0inf(lc_aggressiveness,strength=3.0) # willingness [0-inf) to acccept smaller gaps when changing lane
+
+    def setLcGreediness(self,lc_greediness:float=1.0):
+        assert 0.0 <= lc_greediness <= 1.0, "lc_greediness must be in [0-1]"
+        self.__lc_greediness = lc_greediness
+
+        self.lcGreedinessDict["lcStrategic"] = _mf.inv_01_0inf(lc_greediness,strength=5.0) # how much to exploit lc to reach destinations
+        self.lcGreedinessDict["lcSpeedGain"] = _mf.inv_01_0inf(lc_greediness,strength=5.0) # how much to exploit lc for speed gain
+        self.lcGreedinessDict["lcKeepRight"] = 1.0 # how much [0-inf) to return right by default
+        self.lcGreedinessDict["lcContRight"] = _mf.lin_01_scaled(lc_greediness) # how much [0-1] to choose rightmost lane when available
+        self.lcGreedinessDict["lcSpeedGainLookahead"] = _mf.lin_01_scaled(lc_greediness,1.0,4.0) # time in seconds to anticipate slowdowns 
+        self.lcGreedinessDict["lcSpeedGainRemainTime"] = _mf.neglin_01_scaled(lc_greediness,5.0,20.0) # after speed gain lc, how much time to return on lane if no longer needed
+        self.lcGreedinessDict["lcOvertakeDeltaSpeedFactor"] = _mf.lin_01_scaled(lc_greediness,-1,1) # multiplier for the delta speed needed to overtake
 
     # junction parameters - keep default for majority of cases
-    jmIgnoreKeepClearTime:float=10.0 # time in seconds after which keep-clear-junctions are ignored
-    jmIgnoreFoeProb:float=0.2 # probability [0-1] to ignore conflicting traffic below jmIgnoreFoeSpeed
-    jmIgnoreFoeSpeed:float=10/3.6 # speed (m/s) below which conflicting traffic is ignored
-    jmIgnoreJunctionFoeProb:float=0.05 # probability [0-1] to ignore conflicting traffic at junctions
-    jmStoplineGap:float=0.3 # gap to stopline in meters
-    jmStoplineCrossingGap:float=1.0 # gap to stopline when crossing in meters
-    jmStopSignWait:float=3.0 # time in seconds to wait at stop signs
-    jmAllwayStopWait:float=3.0 # time in seconds to wait at all-way stops
-    impatience:float=0.4 # how much [0-1] to get impatient and impede priority vehicles in traffic jams
+    def setJcAggressiveness(self,jc_aggressiveness:float=0.0):
+        assert 0.0 <= jc_aggressiveness <= 1.0, "jc_aggressiveness must be in [0-1]"
+        self.__jc_aggressiveness = jc_aggressiveness
+
+        # time based parameters - linear dep. is ok
+        self.jcAggressivenessDict["jmIgnoreKeepClearTime"] = _mf.neglin_01_scaled(jc_aggressiveness, 4.0, 12.0) # time after which vehicles enter a junction even if causing a traffic jam
+        self.jcAggressivenessDict["jmStopSignWait"] = _mf.neglin_01_scaled(jc_aggressiveness, 1.0, 3.0) # time to wait at stop signs
+        self.jcAggressivenessDict["jmAllwayStopWait"] = _mf.neglin_01_scaled(jc_aggressiveness, 1.0, 3.0) # time to wait at all-way stops
+
+        # probability based parameters - use exp. mapping to slow down changes at low aggressiveness
+        self.jcAggressivenessDict["jmIgnoreFoeProb"] = _mf.exp_01_01(jc_aggressiveness,strength=10) # probability to ignore conflicting traffic below jmIgnoreFoeSpeed - linear in [0-1]
+        self.jcAggressivenessDict["jmIgnoreFoeSpeed"] = _mf.exp_01_01(jc_aggressiveness,10/3.6) # speed (m/s) below which conflicting traffic is ignored
+        self.jcAggressivenessDict["jmIgnoreJunctionFoeProb"] = _mf.exp_01_01(jc_aggressiveness,strength=5) # probability to ignore conflicting traffic at junctions 
+        self.jcAggressivenessDict["jmAdvance"] = 0 if jc_aggressiveness < 0.5 else 1  # whether to try to advance in junctions when possible
+        self.jcAggressivenessDict["impatience"] = _mf.exp_01_01(jc_aggressiveness) # how much to get impatient and impede priority vehicles in traffic jams
+        
+
+    @property
+    def jc_aggressiveness(self) -> float:
+        return self.__jc_aggressiveness
+    
+    @jc_aggressiveness.setter
+    def jc_aggressiveness(self, value: float):
+        self.setJcAggressiveness(value)
+
+    @property
+    def lc_aggressiveness(self) -> float:
+        return self.__lc_aggressiveness
+    
+    @lc_aggressiveness.setter
+    def lc_aggressiveness(self, value: float):
+        self.setLcAggressiveness(value)
+
+    @property
+    def lc_greediness(self) -> float:
+        return self.__lc_greediness
+    
+    @lc_greediness.setter
+    def lc_greediness(self, value: float):
+        self.setLcGreediness(value)
+    
 
     def copy(self):
-        return IParams(**_asdict(self))
+        return IParams(
+            speedFactor=self.generalDict["speedFactor"],
+            speedDev=self.generalDict["speedDev"],
+            minGap=self.generalDict["minGap"],
+            lcAggressiveness=self.lc_aggressiveness,
+            lcGreediness=self.lc_greediness,
+            jcAggressiveness=self.jc_aggressiveness
+        )
+    
+    def setActionStepLength(self,asl:float):
+        self.generalDict["actionStepLength"] = asl   
+
+    def asDict(self) -> dict:
+        d = dict()
+        d.update(self.generalDict)
+        d.update(self.lcAggressivenessDict)
+        d.update(self.lcGreedinessDict)
+        d.update(self.jcAggressivenessDict)
+        return d
 
 
 @_dc
@@ -86,7 +152,7 @@ class VType:
         return f"ST{self.station_type.value:03d}_{self.name}"
     def xml(self):
         x = f'<vType id="{self.id}" accel="{self.vp.accel:.4e}" decel="{self.vp.decel:.4e}" emergencyDecel="{self.vp.emergency_decel:.4e}" length="{self.vp.length_m:.4e}" maxSpeed="{self.vp.max_speed:.4e}" vClass="{self.vcl}" guiShape="{self.vp.gui_shape}" apparentDecel="{self.vp.apparent_decel:.4e}"'
-        for k,v in self.ip.__dict__.items():
+        for k,v in self.ip.asDict().items():
             if v is not None:
                 x += f' {k}="{v:.4e}"'
         for k,v in self.additional_attributes.items():
