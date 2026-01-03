@@ -205,7 +205,7 @@ class TraciController:
 
         # TODO:CHECK these values
         self.ebk_acc_threshold = -5.0 # m/s²
-        self.ebk_time_threshold_s = 0.1 #TODO:CHECK if it's ok to use time-based threshold for this
+        self.ebk_time_threshold_s = 1.0 #TODO:CHECK if it's ok to use time-based threshold for this
         self.merge_speed_threshold = 0.3
         self.slowdown_traffic_threshold = 0.1
         self.traffic_jam_min_size = 8
@@ -271,9 +271,8 @@ class TraciController:
                     cur_time = self.ls_ebk_time_per_veh.get(vid,0.0)
                     self.ls_ebk_time_per_veh[vid] = cur_time + self.step_len
         # reset ebk times for non-ebk vehicles
-        for vid in self.ls_ebk_time_per_veh.keys():
-            if vid not in ebk_vehs:
-                self.ls_ebk_time_per_veh[vid] = 0.0
+        self.ls_ebk_time_per_veh = { vid: t for vid,t in self.ls_ebk_time_per_veh.items() if vid in ebk_vehs }
+        #print(f"EBK vehs history: {self.ls_ebk_time_per_veh}")
     
     def __checkCollision(self,lb:_MLB) ->bool:
         clist = _traci.simulation.getCollidingVehiclesIDList()

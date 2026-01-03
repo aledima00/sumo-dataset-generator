@@ -22,7 +22,7 @@ from .sumocfg import SumoCfg as _SCFG
 from .labels import LabelsEnum as _LE
 from .map import MapParser as _MP
 
-
+#FIXME: adjust active labels as needed
 ACTIVE_LABELS = set()
 
 
@@ -67,7 +67,8 @@ def mergeDirs(dirpaths:list[_Path], outdir:_Path):
         cur_lb_df = _pd.read_parquet(dirpath / "labels.parquet")
         cur_vi_df = _pd.read_parquet(dirpath / "vinfo.parquet")
 
-        pid_offset = 0 if lb_df is None else getMaxPackId(lb_df) + 1
+        maxPackId = getMaxPackId(lb_df) if lb_df is not None else None
+        pid_offset = maxPackId + 1 if maxPackId is not None else 0
         lb_df = cur_lb_df if lb_df is None else concatWithOffset(lb_df, cur_lb_df, pid_offset)
         vi_df = cur_vi_df if vi_df is None else concatNoDuplicates(vi_df, cur_vi_df, keycol="VehicleId")
 

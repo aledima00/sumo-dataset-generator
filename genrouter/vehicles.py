@@ -120,6 +120,7 @@ class VParams:
     decel:float = 4.5
     emergency_decel:float = 9.0
     length_m:float = 5.0
+    width_m:float = 1.8
     max_speed:float = 180.0 
     kmh:bool = True
     gui_shape:str = "passenger"
@@ -151,7 +152,7 @@ class VType:
     def id(self) -> str:
         return f"ST{self.station_type.value:03d}_{self.name}"
     def xml(self):
-        x = f'<vType id="{self.id}" accel="{self.vp.accel:.4e}" decel="{self.vp.decel:.4e}" emergencyDecel="{self.vp.emergency_decel:.4e}" length="{self.vp.length_m:.4e}" maxSpeed="{self.vp.max_speed:.4e}" vClass="{self.vcl}" guiShape="{self.vp.gui_shape}" apparentDecel="{self.vp.apparent_decel:.4e}"'
+        x = f'<vType id="{self.id}" accel="{self.vp.accel:.4e}" decel="{self.vp.decel:.4e}" emergencyDecel="{self.vp.emergency_decel:.4e}" length="{self.vp.length_m:.4e}" width="{self.vp.width_m:.4e}" maxSpeed="{self.vp.max_speed:.4e}" vClass="{self.vcl}" guiShape="{self.vp.gui_shape}" apparentDecel="{self.vp.apparent_decel:.4e}"'
         for k,v in self.ip.asDict().items():
             if v is not None:
                 x += f' {k}="{v:.4e}"'

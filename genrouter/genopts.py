@@ -10,8 +10,8 @@ DEF_MAX_RTLEN = 20
 DEF_MIN_WALKLEN = 2
 DEF_MAX_WALKLEN = 8
 DEF_VNUM = 100
-DEF_PNUM = 50
-DEF_TDEV_PROP = 0.1
+DEF_PNUM = 0
+# DEF_TDEV_PROP = 0.1
 DEF_OBSTACLES = 0
 
 def _indp(strval:str,*,indnl:int,):
@@ -77,7 +77,8 @@ class GenOptions:
     maxwalklen: int = DEF_MAX_WALKLEN
     vnum: int = DEF_VNUM
     pnum: int = DEF_PNUM
-    tdevp: float = DEF_TDEV_PROP
+    #FIXME: remove tdevp and leave random uniform ?
+    # tdevp: float = DEF_TDEV_PROP
     obstacles: int = DEF_OBSTACLES
 
     source_edges: list[str] = _field(default_factory=list)

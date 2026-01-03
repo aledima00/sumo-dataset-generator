@@ -27,9 +27,9 @@ _defopts = _GOPTS()
 @_clk.option('--maxwalklen', type=int, default=None, help=f'Maximum walking route length in number of edges (default: {_defopts.maxwalklen})')
 @_clk.option('--vnum', type=int, default=None, help=f'Number of vehicles to generate (default: {_defopts.vnum})')
 @_clk.option('--pnum', type=int, default=None, help=f'Number of pedestrians to generate (default: {_defopts.pnum})')
-@_clk.option('--tdevp', type=float, default=None, help=f'Time deviation as proportion of time horizon (default: {_defopts.tdevp})')
+#@_clk.option('--tdevp', type=float, default=None, help=f'Time deviation as proportion of time horizon (default: {_defopts.tdevp})')
 @_clk.option('--obstacles',type=int, default=None,help='Number of obstacle vehicles to generate (default: 0)')
-def generate(sumocfg_path,gparams_fname,time,nroutes,nwalks,step_len,minrtlen,maxrtlen,minwalklen,maxwalklen,vnum,pnum,tdevp,route_filename,net_filename,obstacles:int):
+def generate(sumocfg_path,gparams_fname,time,nroutes,nwalks,step_len,minrtlen,maxrtlen,minwalklen,maxwalklen,vnum,pnum,route_filename,net_filename,obstacles:int):
 
     try:
         sumodir = _Path(sumocfg_path).resolve().parent
@@ -45,7 +45,7 @@ def generate(sumocfg_path,gparams_fname,time,nroutes,nwalks,step_len,minrtlen,ma
             minrtlen=minrtlen,
             maxrtlen=maxrtlen,
             vnum=vnum,
-            tdevp=tdevp,
+            #tdevp=tdevp,
             obstacles=obstacles,
             nwalks=nwalks,
             minwalklen=minwalklen,

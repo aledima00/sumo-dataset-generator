@@ -25,7 +25,8 @@ ObstacleVtype = _VT(
         length_m=3.0,
         max_speed=0.1,
         kmh=False,
-        gui_shape="bus"
+        gui_shape="bus",
+        width_m=1.0
     ),
     ip=_IP(
         minGap=0.0,
@@ -37,7 +38,6 @@ ObstacleVtype = _VT(
     ),
     additional_attributes={
         "color":"1,0,0",
-        "width":"1.0"
     }
 )
 
@@ -53,13 +53,14 @@ class Generator:
         self.MIN_WALKLEN = gparams.minwalklen
         self.VNUM = gparams.vnum
         self.PNUM = gparams.pnum
-        self.TDEV = gparams.tdevp * TIME_HORIZON_S
+        #self.TDEV = gparams.tdevp * TIME_HORIZON_S
         self.obstacle_num = gparams.obstacles
         self.ip_probabs = gparams.IPDict()
         self.vp_probabs = gparams.VPDict()
         self.vcl_probabs = gparams.VCLDict()
         self.prs_params = gparams.PPDict()
         self.modifiers = gparams.ModDict()
+        # print(f"modifiers: {self.modifiers}")
         self.steplen= gparams.steplen
         self.source_edge_ids = gparams.source_edges
         self.vtypes = self.__gen_vtypes()
@@ -183,7 +184,7 @@ class Generator:
                 f.write(f"{'\t'*tabs}{Generator.__comment(s)}")
             wc(f"Generated vehicle file: {self.N_ROUTES} routes, {self.VNUM} vehicles")
             wc(f">> {self.N_ROUTES} routes, each {self.MIN_RTLEN} to {self.MAX_RTLEN} edges long")
-            wc(f">> {self.VNUM} vehicles, depart times ~ N({self.TIME_HORIZON_S/2}s, {self.TDEV}s)")
+            wc(f">> {self.VNUM} vehicles")
             wc(f">> Vehicle types from {len(self.vtypes)} combinations, {len(used_vtypes)} used")
             f.write('<routes>\n')
 
