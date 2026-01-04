@@ -6,11 +6,17 @@ from pathlib import Path as _Path
 from .genopts import GenOptions as _GenOptions
 from .station import StationType as _ST
 
+def boundvalue(v,minv,maxv):
+    return max(minv, min(v, maxv))
+
 additional_attributes={
-    "departPos":"random_free",
+    "departLane":"allowed",
+    "departPos":"base",
+    "departSpeed":"random",
+    "departPosLat":"random",
     "arrivalLane":"first",
+    "arrivalPos":"max",
     "arrivalSpeed":"0.0",
-    "departPosLat":"right",
     "arrivalPosLat":"right",
     "insertionChecks":"none"
 }
@@ -159,15 +165,18 @@ class Generator:
             if _RND.random() <= p:
                 match modname:
                     case "DISTRACTED_DRIVER":
-                        reactionTimeMult = mods.get("reactionTimeMult",None)
-                        if reactionTimeMult is not None:
+                        reactionTimeAvg = mods.get("reactionTimeAvg",None)
+                        reactionTimeDev = mods.get("reactionTimeDev",None)
+                        if reactionTimeAvg is not None and reactionTimeDev is not None:
+                            reactionTime = max(self.steplen,_RND.gauss(reactionTimeAvg,reactionTimeDev))
                             #TODO:CHECK if it is better to directly provide the new value instead of a multiplier
-                            nvt.ip.setActionStepLength(reactionTimeMult * self.steplen)
+                            nvt.ip.setActionStepLength(reactionTime)
                     case "UNEXPECTED_DECEL":
-                        brkRatio = mods.get("brkRatio",None)
-                        if brkRatio is not None:
-                            nvt.vp.decel *= brkRatio
-                            nvt.vp.emergency_decel *= brkRatio
+                        decelPropAvg = mods.get("decelPropAvg",None)
+                        decelPropDev = mods.get("decelPropDev",None)
+                        if decelPropAvg is not None and decelPropDev is not None:
+                            decelProp = boundvalue(_RND.gauss(decelPropAvg,decelPropDev),0.0,1.0)
+                            nvt.vp.decel = nvt.vp.decel + (nvt.vp.emergency_decel - nvt.vp.decel) * decelProp
                             # apparent decel is different than decel!!
                     case _:
                         raise ValueError(f"Unknown modificator: {modname}")

@@ -16,7 +16,8 @@ class IParams:
         self.generalDict = {
             "speedFactor": speedFactor,
             "speedDev": speedDev,
-            "minGap": minGap
+            "minGap": minGap,
+            "actionStepLength": 0.4 #TODO:CHECK if keeping this default is ok
         }
         self.lcAggressivenessDict = dict()
         self.lcGreedinessDict = dict()

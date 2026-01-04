@@ -165,7 +165,6 @@ class TraciController:
     total_frames:int
 
     # thresholds
-    ebk_acc_threshold:float
     ebk_time_threshold_s:float
     merge_speed_threshold:float
     slowdown_traffic_threshold:float
@@ -174,6 +173,7 @@ class TraciController:
     # state variables
     max_speed_per_lane:dict[str,float]
     baseline_speed_per_lane:dict[str,float]
+    th_ebk_per_vt:dict[str,float]
     ls_vehs_lanes:dict[str,str]
     ls_vehs_lanes_no_junc_intlane:dict[str,float]
     ls_vehs_leaders:dict[str,str]
@@ -204,8 +204,9 @@ class TraciController:
         self.map_parser = _MP(str(self.cfg.net_file))
 
         # TODO:CHECK these values
-        self.ebk_acc_threshold = -5.0 # m/s²
-        self.ebk_time_threshold_s = 1.0 #TODO:CHECK if it's ok to use time-based threshold for this
+        self.th_ebk_per_vt = dict()
+        self.ebk_prop_threshold = 0.50
+        self.ebk_time_threshold_s = 0.05 #TODO:CHECK if it's ok to use time-based threshold for this
         self.merge_speed_threshold = 0.3
         self.slowdown_traffic_threshold = 0.1
         self.traffic_jam_min_size = 8
@@ -229,6 +230,14 @@ class TraciController:
             self.print(f"{_Fore.MAGENTA}[{_traci.simulation.getTime()}] {val}{_Style.RESET_ALL}")
 
 
+    def __getVtEbkTh(self, vtid:str)->float:
+        if vtid not in self.th_ebk_per_vt:
+            v_decel = _traci.vehicle.getDecel(vtid)
+            v_em_decel = _traci.vehicle.getEmergencyDecel(vtid)
+            threshold_decel = v_decel + (v_em_decel - v_decel) * self.ebk_prop_threshold
+            self.th_ebk_per_vt[vtid] = threshold_decel
+        return self.th_ebk_per_vt[vtid]
+    
     @staticmethod
     def __getVehEdge(vid:str)->str|None:
         if vid is None or vid not in _traci.vehicle.getIDList():
@@ -265,8 +274,9 @@ class TraciController:
                     self.ls_vehs_lanes_no_junc_intlane[vid] = lane_id
 
                 # ebk times
+                #vt = _traci.vehicle.getTypeID(vid)
                 acc = _traci.vehicle.getAcceleration(vid)
-                if acc < self.ebk_acc_threshold:
+                if acc < -self.__getVtEbkTh(vid):
                     ebk_vehs.add(vid)
                     cur_time = self.ls_ebk_time_per_veh.get(vid,0.0)
                     self.ls_ebk_time_per_veh[vid] = cur_time + self.step_len
@@ -285,8 +295,10 @@ class TraciController:
     def __checkEmergencyBraking(self,lb:_MLB) ->bool:
         for vid in _traci.vehicle.getIDList():
             if not str(vid).startswith("OBS_"):
+                #vt = _traci.vehicle.getTypeID(vid)
                 acc = _traci.vehicle.getAcceleration(vid)
-                if acc < self.ebk_acc_threshold:
+
+                if acc < -self.__getVtEbkTh(vid):
                     tot_time = self.ls_ebk_time_per_veh.get(vid,0.0) + self.step_len
                     if tot_time >= self.ebk_time_threshold_s:
                         self.tlog(f"Emergency Braking detected for vehicle: {vid}")

@@ -101,6 +101,23 @@ class GraphRepresentation:
                 to_edge_id = e2eid(e)
                 via_node_id = n2nid(e.getFromNode())
                 self.__addJunction(via_node_id, from_edge_id, to_edge_id)
+        
+
+    def getStartingEdges(self)->set[str]:
+        """
+        Returns the set of edges that have no incoming connections (i.e., can be starting edges for routes).
+        """
+        starting_edges = set()
+        for edge_id in self.__edges:
+            is_starting = True
+            for j in self.__junctions.values():
+                conns = j.getByToEdge(edge_id)
+                if len(conns) > 0:
+                    is_starting = False
+                    break
+            if is_starting:
+                starting_edges.add(edge_id)
+        return starting_edges
 
     def plot(self):
         print("Edges:")
@@ -126,7 +143,7 @@ class GraphRepresentation:
 
     def randomRoute(self, route_id:str,*,min_steps:int=2, max_steps:int=10, source_edge_ids:set[str]=None)->RouteRepresentation:
         if source_edge_ids is None or len(source_edge_ids)==0:
-            source_edge_id = _random.choice( list(self.__edges) )
+            source_edge_id = _random.choice( list(self.getStartingEdges()) )
         else:
             source_edge_id = _random.choice( list(source_edge_ids) )
         rt = RouteRepresentation(id=route_id, start_edge_id=source_edge_id)
