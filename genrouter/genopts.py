@@ -1,6 +1,9 @@
 from dataclasses import dataclass as _dc, asdict as _asdict, field as _field
 import yaml as _yaml
 from pathlib import Path as _Path
+from typing import Literal as _Lit
+import random as _RND
+
 from .vehicles import IParams as _IP, VParams as _VP
 from .persons import PersonParams as _PP
 
@@ -66,6 +69,52 @@ def _ld_to_dt(ld:list[dict],clout)->dict[tuple]:
     return ret
 
 @_dc
+class VehicleDrawMethod:
+    name: _Lit["Uniform","TimeMovingGaussian","FixedAbsGaussian"] = "Uniform"
+    tdevprop: float|None = None  # only for gaussians
+    onBorders: _Lit["Clamp", "Redistribute"] = "Redistribute"  # only for gaussians
+    sigmaScaling: _Lit["None","Triangular","Quadratic"]|None = None  # only for TimeMovingGaussian
+
+    def correctBounds(self,val:float, minVal:float, maxVal:float)->float:
+        match self.onBorders:
+            case "Clamp":
+                return max(minVal, min(maxVal, val))
+            case "Redistribute":
+                return val if minVal <= val <= maxVal else _RND.uniform(minVal, maxVal)
+            case _:
+                raise ValueError(f"Unknown VehicleDrawMethod onBorders: {self.onBorders}")
+    
+    def getSigmaScalingFactor(self,idx:int,total:int)->float:
+        match self.sigmaScaling:
+            case "Triangular":
+                return 1 - abs(2*idx/total - 1)
+            case "Quadratic":
+                return (1 - abs(2*idx/total - 1))**2
+            case _:
+                return 1.0
+
+    def generateDepartures(self,vnum:int,tot_sim_time:int,*,shuffle:bool=True)->list[float]:
+        match self.name:
+            case "Uniform":
+                dpts = [_RND.uniform(0.0,tot_sim_time) for _ in range(vnum)]
+            case "FixedAbsGaussian":
+                sigma = tot_sim_time * self.tdevprop
+                dpts = [self.correctBounds(abs(_RND.gauss(0, sigma)), 0.0, tot_sim_time) for _ in range(vnum)]
+            case "TimeMovingGaussian":
+                sigma = tot_sim_time * self.tdevprop
+                mean_interval = tot_sim_time / vnum
+                dpts = [self.correctBounds(_RND.gauss(i * mean_interval, sigma * self.getSigmaScalingFactor(i,vnum)), 0.0, tot_sim_time) for i in range(vnum)]
+            case _:
+                raise ValueError(f"Unknown VehicleDrawMethod name: {self.name}")
+        
+        if shuffle:
+            _RND.shuffle(dpts)
+        else:
+            dpts.sort()
+        return dpts
+        
+
+@_dc
 class GenOptions:
     time: int = None
     steplen: float = None
@@ -88,6 +137,8 @@ class GenOptions:
     ClassParams: list[dict] = _field(default_factory=list)
     Modifiers: list[dict] = _field(default_factory=list)
     PersonParams: list[dict] = _field(default_factory=list)
+
+    vDrawMethod: dict = _field(default_factory=dict)
 
     @staticmethod
     def fromYaml(yaml_path:_Path)->'GenOptions':
@@ -149,6 +200,8 @@ class GenOptions:
         return _ld_to_dt(self.PersonParams,_PP)
     def ModDict(self)->dict:
         return _ld_to_dt(self.Modifiers,dict)
+    def VDrawMethod(self)->VehicleDrawMethod:
+        return VehicleDrawMethod(**self.vDrawMethod)
 
     def print(self):
         print("Generation Options:")

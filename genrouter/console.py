@@ -5,56 +5,23 @@ from .genopts import GenOptions as _GOPTS
 from .sumocfg import SumoCfg as _SCFG
 import click as _clk
 from colorama import Fore as _Fore, Style as _Style
-import os as _os
     
 def _shortenPath(p:_Path)->str:
     return str(p if len(p.parts)<=4 else _Path(p.parts[0], p.parts[1], "...", p.parts[-2], p.parts[-1]))
 
-_defopts = _GOPTS()
-
 @_clk.command()
 @_clk.option('-P', '--sumocfg-path', required=True, type=_clk.Path(exists=True, dir_okay=False))
 @_clk.option('--gparams-yaml-fname', '-Y', 'gparams_fname', type=_clk.Path(exists=True, dir_okay=False, file_okay=True), default=None, help='Path to the YAML file containing generation parameters (default: in sumodir). The file contains generation paramters in YAML format. If present, CLI-provided parameters will override the parameters in the file.')
-@_clk.option('--time', type=int, default=None, help=f'Time horizon in seconds (default: from SUMO config file). If specified, will override the one in the SUMO config file.')
-@_clk.option('--route-filename',type=str, default=None, help=f'Output route filename (default: from SUMO config file). If specified, will override the one in the SUMO config file.')
-@_clk.option('--net-filename',type=str, default=None, help=f'Input network filename (default: from SUMO config file). If specified, will override the one in the SUMO config file.')
-@_clk.option('--step-len', type=float, default=None, help='Simulation step length in seconds (default: from SUMO config file). If specified, will override the one in the SUMO config file.')
-@_clk.option('--nroutes',type=int, default=None, help=f'Number of routes to generate (default: vnum+obstacles)')
-@_clk.option('--nwalks',type=int, default=None, help=f'Number of walking routes to generate (default: pnum)')
-@_clk.option('--minrtlen', type=int, default=None, help=f'Minimum route length in number of edges (default: {_defopts.minrtlen})')
-@_clk.option('--maxrtlen', type=int, default=None, help=f'Maximum route length in number of edges (default: {_defopts.maxrtlen})')
-@_clk.option('--minwalklen', type=int, default=None, help=f'Minimum walking route length in number of edges (default: {_defopts.minwalklen})')
-@_clk.option('--maxwalklen', type=int, default=None, help=f'Maximum walking route length in number of edges (default: {_defopts.maxwalklen})')
-@_clk.option('--vnum', type=int, default=None, help=f'Number of vehicles to generate (default: {_defopts.vnum})')
-@_clk.option('--pnum', type=int, default=None, help=f'Number of pedestrians to generate (default: {_defopts.pnum})')
-#@_clk.option('--tdevp', type=float, default=None, help=f'Time deviation as proportion of time horizon (default: {_defopts.tdevp})')
-@_clk.option('--obstacles',type=int, default=None,help='Number of obstacle vehicles to generate (default: 0)')
-def generate(sumocfg_path,gparams_fname,time,nroutes,nwalks,step_len,minrtlen,maxrtlen,minwalklen,maxwalklen,vnum,pnum,route_filename,net_filename,obstacles:int):
+def generate(sumocfg_path,gparams_fname):
 
     try:
         sumodir = _Path(sumocfg_path).resolve().parent
 
         yf = sumodir / "gparams.yaml" if gparams_fname is None else _Path(str(gparams_fname)).resolve()
-        yf2 = sumodir / "gparams-compiled.yaml"
 
         options = _GOPTS.fromYaml(yf)
-        options.overwriteWith(
-            time=time,
-            steplen=step_len,
-            nroutes=nroutes,
-            minrtlen=minrtlen,
-            maxrtlen=maxrtlen,
-            vnum=vnum,
-            #tdevp=tdevp,
-            obstacles=obstacles,
-            nwalks=nwalks,
-            minwalklen=minwalklen,
-            maxwalklen=maxwalklen,
-            pnum=pnum
-        )
         options.normalizeNullish()
-        options.dump(yf2)
-        _clk.echo(f"{_Fore.CYAN}[generation parameters saved to './{yf.name}']{_Style.RESET_ALL}")
+        _clk.echo(f"{_Fore.CYAN}[generation parameters loaded from './{yf.name}']{_Style.RESET_ALL}")
 
         scfg = _SCFG(_Path(sumocfg_path))
         scfg.overwrite(

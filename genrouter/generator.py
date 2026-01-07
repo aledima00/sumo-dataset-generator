@@ -1,10 +1,11 @@
 from .graph import GraphRepresentation as _GR
 from .vehicles import VType as _VT, Vehicle as _VH, VParams as _VP, IParams as _IP
 from .persons import Person as _Person, PType as _PT
-import random as _RND
-from pathlib import Path as _Path
 from .genopts import GenOptions as _GenOptions
 from .station import StationType as _ST
+
+import random as _RND
+from pathlib import Path as _Path
 
 def boundvalue(v,minv,maxv):
     return max(minv, min(v, maxv))
@@ -59,7 +60,7 @@ class Generator:
         self.MIN_WALKLEN = gparams.minwalklen
         self.VNUM = gparams.vnum
         self.PNUM = gparams.pnum
-        #self.TDEV = gparams.tdevp * TIME_HORIZON_S
+        self.vdraw_method = gparams.VDrawMethod()
         self.obstacle_num = gparams.obstacles
         self.ip_probabs = gparams.IPDict()
         self.vp_probabs = gparams.VPDict()
@@ -97,7 +98,8 @@ class Generator:
         used_vtypes = set()
 
         vehicles:list[_VH] = []
-        dpts = [_RND.uniform(0.0,self.TIME_HORIZON_S) for i in range(self.VNUM+self.obstacle_num)]
+        dpts = self.vdraw_method.generateDepartures(self.VNUM+self.obstacle_num, self.TIME_HORIZON_S, shuffle=True)
+
         for i in range(self.VNUM):
             vt = Generator.__draw_vtype(self.vtypes)
             vt = self.apply_random_modificators(vt)
