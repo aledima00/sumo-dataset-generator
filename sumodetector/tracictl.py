@@ -20,6 +20,14 @@ import pyarrow as _pa
 import pyarrow.parquet as _pq
 from collections import deque as _dq
 from typing import TypeAlias as _TA
+from dataclasses import dataclass as _dc
+
+@_dc
+class FrameVState:
+    lane_id: str
+    lane_id_no_junc_intlane: str|None = None
+    leader_id: str|None = None
+    ebk_time_s: float = 0.0
     
 
 CollisionAction = _Lit["teleport", "warn", "none", "remove"]
@@ -174,10 +182,8 @@ class TraciController:
     max_speed_per_lane:dict[str,float]
     baseline_speed_per_lane:dict[str,float]
     th_ebk_per_vt:dict[str,float]
-    ls_vehs_lanes:dict[str,str]
-    ls_vehs_lanes_no_junc_intlane:dict[str,float]
-    ls_vehs_leaders:dict[str,str]
-    ls_ebk_time_per_veh:dict[str,float]
+
+    last_step_vstates:dict[str, FrameVState]
 
     # simulation-wise info
     vinfo_per_vid_df  :_pd.DataFrame
@@ -211,11 +217,8 @@ class TraciController:
         self.slowdown_traffic_threshold = 0.1
         self.traffic_jam_min_size = 8
 
-        # last step state
-        self.ls_vehs_lanes = dict()
-        self.ls_vehs_lanes_no_junc_intlane = dict()
-        self.ls_vehs_leaders = dict()
-        self.ls_ebk_time_per_veh = dict()
+        # last step vstates
+        self.last_step_vstates = dict()
 
         # simulation-wise info
         self.vinfo_per_vid_df  = _pd.DataFrame()
@@ -263,27 +266,32 @@ class TraciController:
         """
         Updates the internal state at the end of each simulation step, keeping track of history of PREVIOUS STEPS.
         """
-        ebk_vehs = set()
-        for vid in _traci.vehicle.getIDList():
+        step_vehicles = _traci.vehicle.getIDList()
+
+        # delete entries from dicts for vehicles that are no longer in the simulation
+        self.last_step_vstates = {vid: vstate for vid,vstate in self.last_step_vstates.items() if vid in step_vehicles}
+
+        for vid in step_vehicles:
             if not str(vid).startswith("OBS_"):
                 lane_id = _traci.vehicle.getLaneID(vid) 
                 leader_id = self.__getRealEdgeLeader(vid)
-                self.ls_vehs_leaders[vid] = leader_id
-                self.ls_vehs_lanes[vid] = lane_id
-                if not self.map_parser.isLaneSpecial(lane_id):
-                    self.ls_vehs_lanes_no_junc_intlane[vid] = lane_id
+                nojint_lane_id = lane_id if not self.map_parser.isLaneSpecial(lane_id) else None
 
                 # ebk times
-                #vt = _traci.vehicle.getTypeID(vid)
+                #vt = _traci.vehicle.getTypeID(vid) # TODO:CHECK if needed
                 acc = _traci.vehicle.getAcceleration(vid)
+                ebktime = 0.0
                 if acc < -self.__getVtEbkTh(vid):
-                    ebk_vehs.add(vid)
-                    cur_time = self.ls_ebk_time_per_veh.get(vid,0.0)
-                    self.ls_ebk_time_per_veh[vid] = cur_time + self.step_len
-        # reset ebk times for non-ebk vehicles
-        self.ls_ebk_time_per_veh = { vid: t for vid,t in self.ls_ebk_time_per_veh.items() if vid in ebk_vehs }
-        #print(f"EBK vehs history: {self.ls_ebk_time_per_veh}")
-    
+                    current = self.last_step_vstates.get(vid,None)
+                    ebktime = (current.ebk_time_s if current is not None else 0.0) + self.step_len
+
+                self.last_step_vstates[vid] = FrameVState(
+                    lane_id=lane_id,
+                    lane_id_no_junc_intlane=nojint_lane_id,
+                    leader_id=leader_id,
+                    ebk_time_s=ebktime
+                )
+
     def __checkCollision(self,lb:_MLB) ->bool:
         clist = _traci.simulation.getCollidingVehiclesIDList()
         if len(clist)>0:
@@ -299,7 +307,8 @@ class TraciController:
                 acc = _traci.vehicle.getAcceleration(vid)
 
                 if acc < -self.__getVtEbkTh(vid):
-                    tot_time = self.ls_ebk_time_per_veh.get(vid,0.0) + self.step_len
+                    ls_vstate = self.last_step_vstates.get(vid,None)
+                    tot_time = (ls_vstate.ebk_time_s if ls_vstate is not None else 0.0) + self.step_len
                     if tot_time >= self.ebk_time_threshold_s:
                         self.tlog(f"Emergency Braking detected for vehicle: {vid}")
                         lb.setLabel(_LE.EMERGENCY_BRAKING)
@@ -335,7 +344,8 @@ class TraciController:
         for vid in _traci.vehicle.getIDList():
             if not str(vid).startswith("OBS_"):
                 lane_id = _traci.vehicle.getLaneID(vid)
-                prev_lane_id = self.ls_vehs_lanes.get(vid,None)
+                ls_vstate = self.last_step_vstates.get(vid,None)
+                prev_lane_id = ls_vstate.lane_id if ls_vstate is not None else None
                 if prev_lane_id is not None and lane_id != prev_lane_id:
                     e1id = _traci.lane.getEdgeID(prev_lane_id)
                     e2id = _traci.lane.getEdgeID(lane_id)
@@ -356,7 +366,8 @@ class TraciController:
     def __checkOvertake(self,lb:_MLB) ->bool:
         for vid in _traci.vehicle.getIDList():
             if not str(vid).startswith("OBS_"):
-                old_leader_id = self.ls_vehs_leaders.get(vid,None)
+                ls_vstate = self.last_step_vstates.get(vid,None)
+                old_leader_id = ls_vstate.leader_id if ls_vstate is not None else None
                 current_leader_id = self.__getRealEdgeLeader(vid)
                 if old_leader_id is not None and current_leader_id != old_leader_id and (self.__getVehEdge(vid) == self.__getVehEdge(old_leader_id)):
                     lb.setLabel(_LE.OVERTAKE)
@@ -368,7 +379,8 @@ class TraciController:
         for vid in _traci.vehicle.getIDList():
             if not str(vid).startswith("OBS_"):
                 lane_id = _traci.vehicle.getLaneID(vid)
-                prev_lane_id = self.ls_vehs_lanes_no_junc_intlane.get(vid,None)
+                ls_vstate = self.last_step_vstates.get(vid,None)
+                prev_lane_id = ls_vstate.lane_id_no_junc_intlane if ls_vstate is not None else None
                 if prev_lane_id is not None and lane_id is not None and lane_id != prev_lane_id and (not self.map_parser.isLaneSpecial(lane_id)):
                     cont_lane_id = self.map_parser.getContToLaneId(from_lane_id=prev_lane_id)
                     if cont_lane_id is None or lane_id != cont_lane_id:
@@ -492,7 +504,7 @@ class TraciController:
             _traci.simulationStep()
             triggered = self.__checkFrame(mlb)
 
-            frameData = self.computeFrame()
+            frameData = self.computeFrame() #TODO:CHECK slowing point
             pbw.appendFrame(frameData, mlb, triggered)
 
             # end of frame analysis: update and wait for next
