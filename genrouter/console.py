@@ -10,7 +10,7 @@ def _shortenPath(p:_Path)->str:
     return str(p if len(p.parts)<=4 else _Path(p.parts[0], p.parts[1], "...", p.parts[-2], p.parts[-1]))
 
 @_clk.command()
-@_clk.option('-P', '--sumocfg-path', required=True, type=_clk.Path(exists=True, dir_okay=False))
+@_clk.option('-P', '--sumocfg-path', required=True, type=_clk.Path(dir_okay=False))
 @_clk.option('--gparams-yaml-fname', '-Y', 'gparams_fname', type=_clk.Path(exists=True, dir_okay=False, file_okay=True), default=None, help='Path to the YAML file containing generation parameters (default: in sumodir). The file contains generation paramters in YAML format. If present, CLI-provided parameters will override the parameters in the file.')
 def generate(sumocfg_path,gparams_fname):
 
@@ -26,8 +26,8 @@ def generate(sumocfg_path,gparams_fname):
         scfg = _SCFG(_Path(sumocfg_path))
         scfg.overwrite(
             time=options.time,
-            route_filename=route_filename,
-            net_filename=net_filename,
+            # route_filename=route_filename,
+            # net_filename=net_filename,
             step_len=options.steplen
         )
         scfg.checkReqParams()
@@ -57,5 +57,6 @@ def generate(sumocfg_path,gparams_fname):
         _clk.echo(f"{_Fore.GREEN}Generation completed successfully!{_Style.RESET_ALL}"+"".join([f"\n{_Fore.YELLOW}  - {k}{_Style.RESET_ALL}: {v}" for k,v in prints]))
     except Exception as e:
         _clk.echo(f"{_Fore.RED}Error during generation{_Style.RESET_ALL}:\n{e}")
+        raise
 
 __all__ = ["generate"]

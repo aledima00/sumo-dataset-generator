@@ -90,11 +90,27 @@ class SumoCfg:
 
     def __init__(self, sumocfg_path: _Path):
         self.sumocfg_file = sumocfg_path.resolve()
-        self.__tree = _ET.parse(self.sumocfg_file)
-        if self.__tree.getroot() is None:
-            raise ValueError(f"SUMO config file {self.sumocfg_file} is not a valid XML file")
+        if sumocfg_path.exists():
+            self.__tree = _ET.parse(self.sumocfg_file)
+            if self.__tree.getroot() is None:
+                raise ValueError(f"SUMO config file {self.sumocfg_file} is not a valid XML file")
+        else:
+            root = _ET.Element('sumoConfiguration')
+            root.attrib["xmlns:xsi"] = "http://www.w3.org/2001/XMLSchema-instance"
+            root.attrib["xsi:noNamespaceSchemaLocation"] = "http://sumo.dlr.de/xsd/sumoConfiguration.xsd"
+            self.__tree = _ET.ElementTree(root)
+        if self.net_file is None:
+            print("Warning: net-file not specified in SUMO config file, setting default to './map.net.xml'")
+            self.net_file = (sumocfg_path.parent / "map.net.xml").resolve()
+        if self.routes_file is None:
+            print("Warning: route-filename not specified in SUMO config file, setting default to './routes.rou.xml'")
+            self.routes_file = (sumocfg_path.parent / "routes.rou.xml").resolve()
         
     def save(self):
+        if not self.sumocfg_file.parent.exists():
+            self.sumocfg_file.parent.mkdir(parents=True, exist_ok=True)
+
+        _ET.indent(self.__tree, space="  ", level=0)
         self.__tree.write(self.sumocfg_file,encoding='UTF-8',xml_declaration=True)
 
     def overwrite(self,*, time:int=None, route_filename=None, net_filename=None, step_len:float=None):
