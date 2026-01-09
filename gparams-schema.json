@@ -1,0 +1,144 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "definitions": {
+        "DistractedDriver": {
+            "type": "object",
+            "properties": {
+                "name": {"const": "DISTRACTED_DRIVER"},
+                "p": {"type": "number", "minimum": 0.0, "description": "Proportion of vehicles affected by this modifier."},
+                "reactionTimeAvg": {"type": "number", "minimum": 0.0, "description": "Average reaction time [s]."},
+                "reactionTimeDev": {"type": "number", "minimum": 0.0, "description": "Std deviation of the reaction time [s]."}
+            },
+            "required": ["name", "p", "reactionTimeAvg", "reactionTimeDev"],
+            "additionalProperties": false
+        },
+        "UnexpectedDecel": {
+            "type": "object",
+            "properties": {
+                "name": {"const": "UNEXPECTED_DECEL"},
+                "p": {"type": "number", "minimum": 0.0, "description": "Proportion of vehicles affected by this modifier."},
+                "decelPropAvg": {"type": "number", "minimum": 0.0, "maximum": 1.0, "description": "Average apparentDecel/decel proportion."},
+                "decelPropDev": {"type": "number", "minimum": 0.0, "description": "Std deviation of the apparentDecel/decel proportion."}
+            },
+            "required": ["name", "p", "decelPropAvg", "decelPropDev"],
+            "additionalProperties": false
+        },
+
+        "UniformDrawMethod":{
+            "type": "object",
+            "properties": {
+                "name": {"type": "string", "const": "Uniform", "description": "Uniform drawing method: random choice within the [0,SIMTIME] interval."}
+            },
+            "required": ["name"],
+            "additionalProperties": false
+        },
+        "TimeMovingGaussianDrawMethod":{
+            "type":"object",
+            "properties": {
+                "name":{"type":"string", "const": "TimeMovingGaussian", "description": "TimeMovingGaussian drawing method: the mean value moves linearly from min to max over the total simulation time."},
+                "tdevprop":{"type":"number", "minimum":0.001, "description":"Standard deviation of each gaussian expressed as proportion of the total interval."},
+                "onBorders":{"type":"string", "description":"What to do when the drawn value falls outside the allowed range,\n - Clamp: to clamp the value to the nearest boundary (default),\n - Redistribute: to redraw the value with a uniform distribution forcing it to fall within the allowed range.", "enum":["Clamp","Redistribute"]},
+                "sigmaScaling":{"type":"string", "description":"Whether to apply a scaling to the standard deviation when getting closer to borders of the allowed range;\n - None: no scaling (default),\n - Triangular: triangular scaling,\n - Quadratic: quadratic scaling.", "enum":["None","Triangular","Quadratic"]}
+            },
+            "required": ["name", "tdevprop"],
+            "additionalProperties": false
+        },
+        "FixedAbsGaussianDrawMethod":{
+            "type":"object",
+            "properties": {
+                "name":{"type":"string", "const": "FixedAbsGaussian", "description": "FixedAbsGaussian drawing method: Gaussian distribution fixed in 0 but positive-only (abs)."},
+                "tdevprop":{"type":"number", "minimum":0.001, "description":"Standard deviation of the gaussian expressed as proportion of the total interval."},
+                "onBorders":{"type":"string", "description":"What to do when the drawn value falls outside the allowed range,\n - Clamp: to clamp the value to the nearest boundary (default),\n - Redistribute: to redraw the value with a uniform distribution forcing it to fall within the allowed range.", "enum":["Clamp","Redistribute"]}
+            },
+            "required": ["name", "tdevprop"],
+            "additionalProperties": false
+        },
+
+        "ClassParamsItem":{
+            "type": "object",
+            "properties": {
+                "p": {"type": "number", "minimum": 0.0, "description": "Proportion of vehicles belonging to this class."},
+                "name": {"type": "string", "description": "Defines the name of the vehicle class."},
+                "vClass": {"type": "string", "description": "SUMO vehicle class."}
+            },
+            "required": ["p","name","vClass"],
+            "additionalProperties": false
+        },
+        "IndividualParamsItem":{
+            "type":"object",
+            "properties":{
+                "p": {"type":"number", "minimum":0.0, "description":"Proportion of individuals driving vehicles belonging to this parameter set."},
+                "name": {"type":"string", "description":"Defines the name of the individual parameter set."},
+                "minGap": {"type":"number", "minimum":0.0, "description":"Minimum gap to the leading vehicle [m]."},
+                "speedFactor": {"type":"number", "minimum":0.0, "description":"Speed factor (as proportion of the speed limit)."},
+                "speedDev": {"type":"number", "minimum":0.0, "description":"Std deviation of the speed factor."},
+                "lcGreediness": {"type":"number", "minimum":0.0, "maximum":1.0, "description":"Lane change greediness."},
+                "lcAggressiveness": {"type":"number", "minimum":0.0, "maximum":1.0, "description":"Lane change aggressiveness."},
+                "jcAggressiveness": {"type":"number", "minimum":0.0, "maximum":1.0, "description":"Junction crossing aggressiveness."}
+            },
+            "required": ["p", "name", "minGap", "speedFactor", "speedDev", "lcGreediness", "lcAggressiveness", "jcAggressiveness"],
+            "additionalProperties": false
+        },
+        "VehicleParamsItem":{
+            "type": "object",
+            "properties": {
+                "p": {"type": "number", "minimum": 0.0, "description": "Proportion of vehicles with this parameter set."},
+                "name": {"type": "string", "description": "Defines the name of the vehicle parameter set."},
+                "stType": {"type": "integer", "minimum": 0, "maximum": 255, "description": "ETSI 8bit station type."},
+                "accel": {"type": "number", "minimum": 0.0, "description": "Maximum acceleration [m/s²]."},
+                "decel": {"type": "number", "minimum": 0.0, "description": "Maximum deceleration [m/s²]."},
+                "emergency_decel": {"type": "number", "minimum": 0.0, "description": "Maximum emergency deceleration [m/s²]."},
+                "length_m": {"type": "number", "minimum": 0.0, "description": "Vehicle length [m]."},
+                "width_m": {"type": "number", "minimum": 0.0, "description": "Vehicle width [m]."},
+                "max_speed": {"type": "number", "minimum": 0.0, "description": "Maximum speed [m/s]."},
+                "gui_shape": {"type": "string", "description": "Vehicle shape in the GUI."}
+            },
+            "required": ["p", "name", "stType", "accel", "decel", "emergency_decel", "length_m", "width_m", "max_speed"],
+            "additionalProperties": false
+        }
+    },
+
+    "type": "object",
+    "properties": {
+        "time": {"type": "integer", "minimum": 1, "description": "Total simulation time in seconds."},
+        "split": {"type": "boolean", "description": "Whether to split the total time across multiple independent simulations (true) or to run a single simulation jumping at different points (false)."},
+        "steplen": {"type": "number", "minimum": 0.001, "description": "Simulation step length in seconds."},
+        "minrtlen": {"type": "number", "minimum": 1, "description": "Minimum vehicles route steps."},
+        "maxrtlen": {"type": "number", "minimum": 1, "description": "Maximum vehicles route steps."},
+        "obstacles": {"type": "integer", "minimum": 0, "description": "Number of obstacles to randomly drop in the network."},
+        "vnum": {"type": "integer", "minimum": 0, "description": "Number of vehicles to generate."},
+        "minwalklen": {"type": "number", "minimum": 1, "description": "Minimum pedestrians route steps."},
+        "maxwalklen": {"type": "number", "minimum": 1, "description": "Maximum pedestrians route steps."},
+        "pnum": {"type": "integer", "minimum": 0, "description": "Number of pedestrians to generate."},
+        "vDrawMethod": {
+            "oneOf": [
+                {"$ref": "#/definitions/UniformDrawMethod", "description": "Uniform drawing method for vehicle insertion times."},
+                {"$ref": "#/definitions/TimeMovingGaussianDrawMethod", "description": "TimeMovingGaussian drawing method for vehicle insertion times."},
+                {"$ref": "#/definitions/FixedAbsGaussianDrawMethod", "description": "FixedAbsGaussian drawing method for vehicle insertion times."}
+            ]
+        },
+        "ClassParams": {
+            "type": "array",
+            "items": { "$ref": "#/definitions/ClassParamsItem" }
+        },
+        "IndividualParams":{
+            "type":"array",
+            "items":{ "$ref": "#/definitions/IndividualParamsItem" }
+        },
+        "VehicleParams":{
+            "type":"array",
+            "items": { "$ref": "#/definitions/VehicleParamsItem" }
+        },
+        "Modifiers":{
+            "type": "array",
+            "items": {
+                "oneOf": [
+                    { "$ref": "#/definitions/DistractedDriver", "description": "Modifiers that simulate distracted driving behavior by changing reaction times." },
+                    { "$ref": "#/definitions/UnexpectedDecel", "description": "Modifiers that simulate unexpected deceleration behavior by reducing the apparentDecel w.r.t. decel." }
+                ]
+            }
+        }
+    },
+    "required": ["time", "split", "steplen"],
+    "additionalProperties": false
+}

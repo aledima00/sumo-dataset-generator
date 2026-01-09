@@ -178,7 +178,7 @@ class Generator:
                         decelPropDev = mods.get("decelPropDev",None)
                         if decelPropAvg is not None and decelPropDev is not None:
                             decelProp = boundvalue(_RND.gauss(decelPropAvg,decelPropDev),0.0,1.0)
-                            nvt.vp.decel = nvt.vp.decel + (nvt.vp.emergency_decel - nvt.vp.decel) * decelProp
+                            nvt.vp.apparent_decel = nvt.vp.decel * decelProp
                             # apparent decel is different than decel!!
                     case _:
                         raise ValueError(f"Unknown modificator: {modname}")

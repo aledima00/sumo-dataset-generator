@@ -117,6 +117,7 @@ class VehicleDrawMethod:
 @_dc
 class GenOptions:
     time: int = None
+    split: bool = False
     steplen: float = None
     nroutes: int = None
     nwalks: int = None
@@ -126,8 +127,6 @@ class GenOptions:
     maxwalklen: int = DEF_MAX_WALKLEN
     vnum: int = DEF_VNUM
     pnum: int = DEF_PNUM
-    #FIXME: remove tdevp and leave random uniform ?
-    # tdevp: float = DEF_TDEV_PROP
     obstacles: int = DEF_OBSTACLES
 
     source_edges: list[str] = _field(default_factory=list)
@@ -139,6 +138,18 @@ class GenOptions:
     PersonParams: list[dict] = _field(default_factory=list)
 
     vDrawMethod: dict = _field(default_factory=dict)
+
+    def copy(self,*,divide_by:int=None)->'GenOptions':
+        gopts = GenOptions(**_asdict(self))
+        if divide_by is not None:
+            gopts.time = gopts.time // divide_by
+            gopts.vnum = gopts.vnum // divide_by
+            gopts.nroutes = gopts.nroutes // divide_by
+            gopts.pnum = gopts.pnum // divide_by
+            gopts.nwalks = gopts.nwalks // divide_by
+            gopts.obstacles = gopts.obstacles // divide_by
+        return gopts
+
 
     @staticmethod
     def fromYaml(yaml_path:_Path)->'GenOptions':

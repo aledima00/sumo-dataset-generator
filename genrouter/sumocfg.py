@@ -88,7 +88,7 @@ class SumoCfg:
         steplen_elm = self.__getOrCreate('time','step-length')
         steplen_elm.attrib['value'] = str(new_steplen_s)
 
-    def __init__(self, sumocfg_path: _Path):
+    def __init__(self, sumocfg_path: _Path, split: bool = False):
         self.sumocfg_file = sumocfg_path.resolve()
         if sumocfg_path.exists():
             self.__tree = _ET.parse(self.sumocfg_file)
@@ -100,11 +100,11 @@ class SumoCfg:
             root.attrib["xsi:noNamespaceSchemaLocation"] = "http://sumo.dlr.de/xsd/sumoConfiguration.xsd"
             self.__tree = _ET.ElementTree(root)
         if self.net_file is None:
-            print("Warning: net-file not specified in SUMO config file, setting default to './map.net.xml'")
-            self.net_file = (sumocfg_path.parent / "map.net.xml").resolve()
+            print(f"Warning: net-file not specified in SUMO config file, setting default to '{'..' if split else '.'}/map.net.xml'")
+            self.net_file = (sumocfg_path.parent / (".." if split else ".") / "map.net.xml")
         if self.routes_file is None:
             print("Warning: route-filename not specified in SUMO config file, setting default to './routes.rou.xml'")
-            self.routes_file = (sumocfg_path.parent / "routes.rou.xml").resolve()
+            self.routes_file = (sumocfg_path.parent / "routes.rou.xml")
         
     def save(self):
         if not self.sumocfg_file.parent.exists():
