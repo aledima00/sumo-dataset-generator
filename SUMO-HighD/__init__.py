@@ -1,9 +1,5 @@
 import traci as _traci
 import json as _json
-import math as _math
-from collections import defaultdict as _defdict
-import matplotlib.pyplot as _plt
-import numpy as _np
 
 # Lane change direction: 1 - left, -1 - right
 
@@ -41,104 +37,6 @@ def update_delta_pos_dict(delta_pos_dict, time_dict, veh):
             delta_pos_dict[veh][f] = (time_dict[f][veh]["x"] - time_dict[prev_frame][veh]["x"], time_dict[f][veh]["y"] - time_dict[prev_frame][veh]["y"])
         else:
             break
-
-def calculate_cost_over_time(data, frame, vehicle_id):
-    costs = _defdict(list)
-    start_frame = frame
-    end_frame = frame + 10
-    for f in range(start_frame, end_frame):
-        if vehicle_id not in data[f].keys():
-            costs["preceding"].append(0)
-            costs["following"].append(0)
-            costs["left_preceding"].append(0)
-            costs["left_following"].append(0)
-            costs["right_preceding"].append(0)
-            costs["right_following"].append(0)
-            costs["left_alongside"].append(0)
-            costs["right_alongside"].append(0)
-            continue
-        d = data[f][vehicle_id]
-        if d["preceding_id"] != 0:
-            id = str(d["preceding_id"])
-            distance = _math.sqrt((d["x"] - data[f][id]["x"])**2 + (d["y"] - data[f][id]["y"])**2)
-            relative_speed = abs(d["x_velocity"] - data[f][id]["x_velocity"])
-            if relative_speed == 0:
-                relative_speed = 0.01
-            cost = - (distance / relative_speed)
-            costs["preceding"].append(cost)
-        else:
-            costs["preceding"].append(0)
-        if d["following_id"] != 0:
-            id = str(d["following_id"])
-            distance = _math.sqrt((d["x"] - data[f][id]["x"])**2 + (d["y"] - data[f][id]["y"])**2)
-            relative_speed = abs(d["x_velocity"] - data[f][id]["x_velocity"])
-            if relative_speed == 0:
-                relative_speed = 0.01
-            cost = - (distance / relative_speed)
-            costs["following"].append(cost)
-        else:
-            costs["following"].append(0)
-        if d["left_preceding_id"] != 0:
-            id = str(d["left_preceding_id"])
-            distance = _math.sqrt((d["x"] - data[f][id]["x"])**2 + (d["y"] - data[f][id]["y"])**2)
-            relative_speed = abs(d["x_velocity"] - data[f][id]["x_velocity"])
-            if relative_speed == 0:
-                relative_speed = 0.01
-            cost = - (distance / relative_speed)
-            costs["left_preceding"].append(cost)
-        else:
-            costs["left_preceding"].append(0)
-        if d["left_following_id"] != 0:
-            id = str(d["left_following_id"])
-            distance = _math.sqrt((d["x"] - data[f][id]["x"])**2 + (d["y"] - data[f][id]["y"])**2)
-            relative_speed = abs(d["x_velocity"] - data[f][id]["x_velocity"])
-            if relative_speed == 0:
-                relative_speed = 0.01
-            cost = - (distance / relative_speed)
-            costs["left_following"].append(cost)
-        else:
-            costs["left_following"].append(0)
-        if d["right_preceding_id"] != 0:
-            id = str(d["right_preceding_id"])
-            distance = _math.sqrt((d["x"] - data[f][id]["x"])**2 + (d["y"] - data[f][id]["y"])**2)
-            relative_speed = abs(d["x_velocity"] - data[f][id]["x_velocity"])
-            if relative_speed == 0:
-                relative_speed = 0.01
-            cost = - (distance / relative_speed)
-            costs["right_preceding"].append(cost)
-        else:
-            costs["right_preceding"].append(0)
-        if d["right_following_id"] != 0:
-            id = str(d["right_following_id"])
-            distance = _math.sqrt((d["x"] - data[f][id]["x"])**2 + (d["y"] - data[f][id]["y"])**2)
-            relative_speed = abs(d["x_velocity"] - data[f][id]["x_velocity"])
-            if relative_speed == 0:
-                relative_speed = 0.01
-            cost = - (distance / relative_speed)
-            costs["right_following"].append(cost)
-        else:
-            costs["right_following"].append(0)
-        if d["left_alongside_id"] != 0:
-            id = str(d["left_alongside_id"])
-            distance = _math.sqrt((d["x"] - data[f][id]["x"])**2 + (d["y"] - data[f][id]["y"])**2)
-            relative_speed = abs(d["x_velocity"] - data[f][id]["x_velocity"])
-            if relative_speed == 0:
-                relative_speed = 0.01
-            cost = - (distance / relative_speed)
-            costs["left_alongside"].append(cost)
-        else:
-            costs["left_alongside"].append(0)
-        if d["right_alongside_id"] != 0:
-            id = str(d["right_alongside_id"])
-            distance = _math.sqrt((d["x"] - data[f][id]["x"])**2 + (d["y"] - data[f][id]["y"])**2)
-            relative_speed = abs(d["x_velocity"] - data[f][id]["x_velocity"])
-            if relative_speed == 0:
-                relative_speed = 0.01
-            cost = - (distance / relative_speed)
-            costs["right_alongside"].append(cost)
-        else:
-            costs["right_alongside"].append(0)
-    return costs
 
 def get_next_lane_change(time_dict, current_frame, vehicle_id):
     """Look ahead to find the next lane change for a vehicle"""
@@ -246,7 +144,6 @@ def create_time_dict(data):
     return time_dict
 
 def main():
-    costs_collection = _defdict(list)
     for i in range(2, 3):
         _traci.start(["sumo-gui", "-c", "highway.sumo.cfg", "--collision.action", "warn", "--lanechange.duration", "1"])
         print(f"\nStarting simulation for file {i} ...\n")
@@ -290,9 +187,6 @@ def main():
                         next_time, next_lane = lc_dict[veh]
                         # If the vehicle is scheduled to start changing lane at the current frame, change the lane
                         if next_time == current_time:
-                            costs = calculate_cost_over_time(time_dict, frame, veh)
-                            for k in costs.keys():
-                                costs_collection[k].append(costs[k])
                             _traci.vehicle.changeLane(veh, next_lane, 1)
                             # print(f"Vehicle {veh} is changing lane")
                     if time_dict[frame][veh]["lane_change"] != 0:
@@ -311,19 +205,6 @@ def main():
                                 lc_dict[veh] = (next_time, next_lane)
             _traci.simulationStep()
             current_time = _traci.simulation.getTime()
-
-    for i, k in enumerate(costs_collection.keys()):
-        median = list()
-        for x in zip(*costs_collection[k]):
-            x = [i for i in x if i != 0]
-            median.append(_np.median(x))
-        _plt.plot(median, label=k)
-        _plt.title(f"Median cost for {k} over time (cost = " + r"$-\frac{distance}{relative_speed}$" + ")")
-        _plt.ylabel("Cost")
-        _plt.xlabel("Time [s]")
-        _plt.legend()
-        _plt.savefig(f"plots/{k}.png")
-        _plt.close()
 
     _traci.close()
 
