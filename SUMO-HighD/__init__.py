@@ -299,7 +299,6 @@ def main():
                         # Get frame and lane for lane change direction
                         next_frame, next_lane = get_next_lane_change(time_dict, frame, veh)
                         if next_frame and next_lane:
-                            _traci.vehicle.setColor(veh, RED_RGBA)
                             if veh not in lc_dict.keys() or next_lane != lc_dict[veh][1]:
                                 # 10 frames per second, so divide by 10 to get the time in seconds
                                 next_time = next_frame / 10
