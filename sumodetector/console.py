@@ -10,7 +10,6 @@ import click as _click
 import traci as _traci
 from shutil import rmtree as _rmrf
 from colorama import Fore as _Fore, Style as _Style
-from typing import get_args
 import pandas as _pd
 import pyarrow as _pa
 import pyarrow.parquet as _pq
@@ -21,10 +20,7 @@ from .tracictl import TraciController, CollisionAction
 from .sumocfg import SumoCfg as _SCFG
 from .labels import LabelsEnum as _LE
 from .map import MapParser as _MP
-
-#FIXME: adjust active labels as needed
-ACTIVE_LABELS = set()
-
+from .tup import SimpleTraciUpdater as _SimpleTraciUpdater, TraciUpdater as _TraciUpdater
 
 def getMaxPackId(df:_pd.DataFrame)->int:
     """
@@ -99,7 +95,7 @@ def tar(src_folder:_Path):
     with _tarfile.open(tarpath, "w") as tar:
         tar.add(src_folder, arcname="data")
 
-def tctl_worker(gui,scfg,frame_pack_size,start_time_s,sim_time_s,on_collision,warnings,emergency_insertions,delay,*,queue:_mp.Queue,progress_queue:_mp.Queue, idx:int, excqueue:_mp.Queue, temp_path:_Path=None):
+def tctl_worker(gui,scfg,frame_pack_size,start_time_s,sim_time_s,on_collision,warnings,emergency_insertions,delay,*,queue:_mp.Queue,progress_queue:_mp.Queue, idx:int, excqueue:_mp.Queue, temp_path:_Path=None, active_labels:set[_LE], traci_updater:_TraciUpdater):
     # CONTROL THIS IMPLEMENTATION
     bp = temp_path if temp_path is not None else _Path.cwd()
     controller = TraciController(
@@ -114,7 +110,8 @@ def tctl_worker(gui,scfg,frame_pack_size,start_time_s,sim_time_s,on_collision,wa
         delay=delay,
         printfunc=_click.echo,
         tlog=False,
-        active_labels=ACTIVE_LABELS
+        active_labels=active_labels,
+        traci_updater=traci_updater
     )
     def handle_sigusr1(signum, frame):
         _click.echo(f"{_Fore.YELLOW}Worker {idx} received SIGUSR1 ({signum}), terminating simulation...{_Style.RESET_ALL}")
@@ -164,129 +161,137 @@ def tqdm_logger_worker(totFrames:int, doneQueue:_mp.Queue):
         progress.update(val)
     progress.close()
 
-def setActiveLabels(labels:set[_LE]):
-    global ACTIVE_LABELS
-    ACTIVE_LABELS.clear()
-    ACTIVE_LABELS.update(labels)
 
-@_click.command()
-@_click.option('--gui','-g', is_flag=True, default=False, help='Run SUMO with GUI')
-@_click.option('--no-warnings', is_flag=True, default=False, help='Suppress SUMO warnings.')
-@_click.option('-E','--enable-emergency-insertions', 'enable_emergency_insertions', is_flag=True, default=False, help='Enable insertion of emergency vehicles during simulation (default: False).')
-@_click.option('--pack-size','-p', type=int, default=20, help='Number of frames in each pack (default: 20).')
-@_click.option('--on-collision', type=_click.Choice(get_args(CollisionAction)), default=None, help='Action to take on collision (default: None).')
-@_click.option('--outdir', type=_click.Path(file_okay=False, dir_okay=True, writable=True), required=True, help='Output directory for label files (required).')
-@_click.option('--delay', '-d', type=float, default=None, help='Delay in ms between simulation steps (default: no delay).')
-@_click.option('--tar','tar_opt', is_flag=True, default=False, help='Create a tar archive of the output directory after simulation. No need for .gz compression since files are parquet format.')
-@_click.option('-M', '--multi-threaded', 'multi_threaded', is_flag=True, default=False, help='Whether to run the simulation in multi-threaded mode (default: False).')
-@_click.option('--map-only', is_flag=True, default=False, help='Only extract the vector map without running the full simulation (default: False).')
-@_click.option('-S', '--split', is_flag=True, default=False, help='Whether to split the simulation into multiple parts (default: False). Only used in multi-threaded mode.')
-@_click.argument('basepath', type=_click.Path(exists=True, dir_okay=True, file_okay=True, path_type=_Path), nargs=1)
-def runSimulation(gui, no_warnings, enable_emergency_insertions, pack_size, on_collision, basepath:_Path,outdir, delay, tar_opt, multi_threaded, map_only, split):
-    global ACTIVE_LABELS
-    print(f"active labels: {ACTIVE_LABELS}")
-    nprocs = _mp.cpu_count() // 2 if multi_threaded else 1
+ALL_LABELS = {v for v in _LE}
+TRACI_UPDATER = _SimpleTraciUpdater()
+class SimulationController:
+    def __init__(self,*,active_labels:set[_LE]=ALL_LABELS,traci_updater:_TraciUpdater=TRACI_UPDATER, gui:bool, no_warnings:bool, enable_emergency_insertions:bool, pack_size:int, on_collision:CollisionAction, basepath:_Path,outdir:_Path, delay:float, tar_opt:bool, multi_threaded:bool, map_only:bool, split:bool):
+        self.active_labels = active_labels
+        self.traci_updater = traci_updater
+        self.gui = gui
+        self.no_warnings = no_warnings
+        self.enable_emergency_insertions = enable_emergency_insertions
+        self.pack_size = pack_size
+        self.on_collision = on_collision
+        self.basepath = basepath
+        self.outdir = outdir
+        self.delay = delay
+        self.tar_opt = tar_opt
+        self.multi_threaded = multi_threaded
+        self.map_only = map_only
+        self.split = split
 
-    if not split:
-        scfgp = basepath.resolve() if basepath.is_file() else (basepath / "cfg.sumocfg").resolve()
-        scfg = _SCFG(scfgp)
-        scfg.checkReqParams()
-    else:
-        scfgps = [ basepath.resolve() / f"part{i}" / "cfg.sumocfg" for i in range(nprocs) ]
-        scfgs = [ _SCFG(scfgp) for scfgp in scfgps ]
-        for scfg in scfgs:
+    def run(self):
+        print(f"active labels: {self.active_labels}")
+        nprocs = _mp.cpu_count() // 2 if self.multi_threaded else 1
+
+        if not self.split:
+            scfgp = self.basepath.resolve() if self.basepath.is_file() else (self.basepath / "cfg.sumocfg").resolve()
+            scfg = _SCFG(scfgp)
             scfg.checkReqParams()
-        scfg = scfgs[0]  # use first config for map extraction
+        else:
+            scfgps = [ self.basepath.resolve() / f"part{i}" / "cfg.sumocfg" for i in range(nprocs) ]
+            scfgs = [ _SCFG(scfgp) for scfgp in scfgps ]
+            for scfg in scfgs:
+                scfg.checkReqParams()
+            scfg = scfgs[0]  # use first config for map extraction
 
-    outdir = _Path(outdir)
-    if outdir.exists():
-        _rmrf(outdir)
-    if outdir.with_suffix('.tar').exists():
-        outdir.with_suffix('.tar').unlink()
-    outdir.mkdir(parents=True, exist_ok=True)
+        if self.outdir.exists():
+            _rmrf(self.outdir)
+        if self.outdir.with_suffix('.tar').exists():
+            self.outdir.with_suffix('.tar').unlink()
+        self.outdir.mkdir(parents=True, exist_ok=True)
 
-    _MP(scfg.net_file.resolve()).asVectorDf().to_parquet(outdir / "vmap.parquet", index=False)
-    _click.echo(f"{_Fore.GREEN}Vector map extracted to {outdir / 'vmap.parquet'}.{_Style.RESET_ALL}")
-    if map_only:
-        return
-    
-    start_time = _tpc()
-
-    # use half of available CPUs to avoid overloading
-    _click.echo(f"{_Fore.GREEN}Running simulation with {nprocs} worker{'s in parallel' if nprocs > 1 else ''}...{_Style.RESET_ALL}")
-    queue = _mp.Queue()
-    excqueue = _mp.Queue()
-    progress_queue = _mp.Queue()
-    processes: list[_mp.Process] = []
-
-    sim_time_per_cpu = scfg.duration_s if split else scfg.duration_s / nprocs
-    bdp = basepath.resolve() if basepath.is_dir() else basepath.parent.resolve()
-    workers_cache_path =(bdp / '.workers_tmp').resolve()
-    if workers_cache_path.exists():
-        _rmrf(workers_cache_path)
-
-    # progress logger
-    tot_frames = (_floor(sim_time_per_cpu / scfg.step_length_s)) * nprocs
-    progress_logger_proc = _mp.Process(target=tqdm_logger_worker, args=(tot_frames, progress_queue))
-    progress_logger_proc.start()
-
-    for i in range(nprocs):
-        scfg_i = scfgs[i] if split else scfg
-        p = _mp.Process(target=tctl_worker, args=(
-            gui,
-            scfg_i,
-            pack_size,
-            0 if split else (i * sim_time_per_cpu),
-            sim_time_per_cpu,
-            on_collision,
-            not no_warnings,
-            enable_emergency_insertions,
-            delay,
-        ), kwargs={'queue': queue, 'progress_queue': progress_queue, 'idx': i, 'excqueue': excqueue, 'temp_path': workers_cache_path})
-        processes.append(p)
-        p.start()
-
-    ctl_proc = _mp.Process(target=ctlworker, args=(processes, excqueue))
-    ctl_proc.start()
-
-    try:
-        for p in processes:
-            p.join()
-    except KeyboardInterrupt as kbdint:
-        # keyboard interrupt in main thread
-        _click.echo(f"{_Fore.RED}KeyboardInterrupt received, terminating all processes...{_Style.RESET_ALL}")
-        excqueue.put( (-1, kbdint) )
-    except Exception as e:
-        # exception in main thread
-        _click.echo(f"{_Fore.RED}An error occurred during multi-threaded simulation: {e}{_Style.RESET_ALL}")
-        excqueue.put( (-1, e) )
-
-    if ctl_proc.is_alive():
-        ctl_proc.terminate()
-        ctl_proc.join()
-    else:
-        _sys.exit(-1)
-
-    if progress_logger_proc.is_alive():
-        progress_logger_proc.terminate()
-    progress_logger_proc.join()
+        _MP(scfg.net_file.resolve()).asVectorDf().to_parquet(self.outdir / "vmap.parquet", index=False)
+        _click.echo(f"{_Fore.GREEN}Vector map extracted to {self.outdir / 'vmap.parquet'}.{_Style.RESET_ALL}")
+        if self.map_only:
+            return
         
-    dirnames = []
-    for i in range(nprocs):
-        print(f"{_Fore.GREEN}Collected results from worker #{i}{_Style.RESET_ALL}")
-        dirnames.append( queue.get() )
-    # sort controllers by idx
-    dirnames.sort(key=lambda x: x[0])
-    dirnames = [f[1] for f in dirnames]
-    mergeDirs(dirnames, outdir)
-    _rmrf(workers_cache_path)
-    
-    end_time = _tpc()
-    elapsed = end_time - start_time
-    _click.echo(f"{_Fore.GREEN}Simulation completed successfully in {elapsed:.2f} seconds.{_Style.RESET_ALL}")
-    _click.echo(f"- All data dumped in parquet format to {outdir}")
+        start_time = _tpc()
 
-    if tar_opt:
-        tar(outdir.resolve())
-        _click.echo(f"- Output directory archived to {outdir.with_suffix('.tar')}")
-        _rmrf(outdir.resolve())
+        # use half of available CPUs to avoid overloading
+        _click.echo(f"{_Fore.GREEN}Running simulation with {nprocs} worker{'s in parallel' if nprocs > 1 else ''}...{_Style.RESET_ALL}")
+        queue = _mp.Queue()
+        excqueue = _mp.Queue()
+        progress_queue = _mp.Queue()
+        processes: list[_mp.Process] = []
+
+        sim_time_per_cpu = scfg.duration_s if self.split else scfg.duration_s / nprocs
+        bdp = self.basepath.resolve() if self.basepath.is_dir() else self.basepath.parent.resolve()
+        workers_cache_path =(bdp / '.workers_tmp').resolve()
+        if workers_cache_path.exists():
+            _rmrf(workers_cache_path)
+
+        # progress logger
+        tot_frames = (_floor(sim_time_per_cpu / scfg.step_length_s)) * nprocs
+        progress_logger_proc = _mp.Process(target=tqdm_logger_worker, args=(tot_frames, progress_queue))
+        progress_logger_proc.start()
+
+        for i in range(nprocs):
+            scfg_i = scfgs[i] if self.split else scfg
+            p = _mp.Process(target=tctl_worker, args=(
+                self.gui,
+                scfg_i,
+                self.pack_size,
+                0 if self.split else (i * sim_time_per_cpu),
+                sim_time_per_cpu,
+                self.on_collision,
+                not self.no_warnings,
+                self.enable_emergency_insertions,
+                self.delay,
+            ), kwargs={
+                'queue': queue,
+                'progress_queue': progress_queue,
+                'idx': i,
+                'excqueue': excqueue,
+                'temp_path': workers_cache_path,
+                'active_labels': self.active_labels,
+                'traci_updater': self.traci_updater
+            })
+            processes.append(p)
+            p.start()
+
+        ctl_proc = _mp.Process(target=ctlworker, args=(processes, excqueue))
+        ctl_proc.start()
+
+        try:
+            for p in processes:
+                p.join()
+        except KeyboardInterrupt as kbdint:
+            # keyboard interrupt in main thread
+            _click.echo(f"{_Fore.RED}KeyboardInterrupt received, terminating all processes...{_Style.RESET_ALL}")
+            excqueue.put( (-1, kbdint) )
+        except Exception as e:
+            # exception in main thread
+            _click.echo(f"{_Fore.RED}An error occurred during multi-threaded simulation: {e}{_Style.RESET_ALL}")
+            excqueue.put( (-1, e) )
+
+        if ctl_proc.is_alive():
+            ctl_proc.terminate()
+            ctl_proc.join()
+        else:
+            _sys.exit(-1)
+
+        if progress_logger_proc.is_alive():
+            progress_logger_proc.terminate()
+        progress_logger_proc.join()
+            
+        dirnames = []
+        for i in range(nprocs):
+            print(f"{_Fore.GREEN}Collected results from worker #{i}{_Style.RESET_ALL}")
+            dirnames.append( queue.get() )
+        # sort controllers by idx
+        dirnames.sort(key=lambda x: x[0])
+        dirnames = [f[1] for f in dirnames]
+        mergeDirs(dirnames, self.outdir)
+        _rmrf(workers_cache_path)
+        
+        end_time = _tpc()
+        elapsed = end_time - start_time
+        _click.echo(f"{_Fore.GREEN}Simulation completed successfully in {elapsed:.2f} seconds.{_Style.RESET_ALL}")
+        _click.echo(f"- All data dumped in parquet format to {self.outdir}")
+
+        if self.tar_opt:
+            tar(self.outdir.resolve())
+            _click.echo(f"- Output directory archived to {self.outdir.with_suffix('.tar')}")
+            _rmrf(self.outdir.resolve())

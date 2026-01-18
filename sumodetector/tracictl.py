@@ -7,6 +7,9 @@ from .labels import LabelsEnum as _LE, MultiLabel as _MLB
 from .map import MapParser as _MP
 from .sumocfg import SumoCfg as _SCFG
 from .pack import PackSchema as _PKS, pack2pandas as _p2df, Frame as _FR, VehicleData as _VD, VInfo as _VI, PInfo as _PI
+from .tup import TraciUpdater as _TraciUpdater, SimpleTraciUpdater as _SimpleTraciUpdater
+
+
 from colorama import Fore as _Fore, Style as _Style
 import re as _re
 import time as _t
@@ -192,7 +195,7 @@ class TraciController:
     cfg:_SCFG
 
 
-    def __init__(self,*,gui:bool,sumo_cfg:_SCFG,frame_pack_size:int,sim_time_s:float,start_time_s:float,on_collision:CollisionAction='none',warnings:bool,emergency_insertions:bool,delay:float=None,active_labels:set[_LE],printfunc=None,tlog:bool=False):
+    def __init__(self,*,gui:bool,sumo_cfg:_SCFG,frame_pack_size:int,sim_time_s:float,start_time_s:float,on_collision:CollisionAction='none',warnings:bool,emergency_insertions:bool,delay:float=None,active_labels:set[_LE],printfunc=None,tlog:bool=False,traci_updater:_TraciUpdater=None):
         self.gui = gui
         self.cfg = sumo_cfg
         self.step_len = sumo_cfg.step_length_s
@@ -227,6 +230,9 @@ class TraciController:
         self.active_labels = active_labels
         self.print = printfunc if printfunc is not None else (lambda x: None)
         self.__tlog_enabled = tlog
+
+        # traci updater
+        self.traci_updater = traci_updater if traci_updater is not None else _SimpleTraciUpdater()
 
     def tlog(self, val:str):
         if self.__tlog_enabled:
@@ -494,14 +500,15 @@ class TraciController:
 
         if self.start_time_s > 0.0:
             self.tlog(f"Skipping to start time {self.start_time_s}s...")
-            _traci.simulationStep(self.start_time_s-self.step_len)
+            self.traci_updater.jumpTo(self.start_time_s-self.step_len)
             self.__updateState()
-            _traci.simulationStep()
+            self.traci_updater.update()
 
         # -------------------------- main simulation loop --------------------------
         for fnum in range(self.total_frames):
             mlb.clear()
-            _traci.simulationStep()
+            #FIXME: double update call???
+            self.traci_updater.update()
             triggered = self.__checkFrame(mlb)
 
             frameData = self.computeFrame() #TODO:CHECK slowing point
