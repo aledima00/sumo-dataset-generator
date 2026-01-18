@@ -180,12 +180,23 @@ def setActiveLabels(labels:set[_LE]):
 @_click.option('--tar','tar_opt', is_flag=True, default=False, help='Create a tar archive of the output directory after simulation. No need for .gz compression since files are parquet format.')
 @_click.option('-M', '--multi-threaded', 'multi_threaded', is_flag=True, default=False, help='Whether to run the simulation in multi-threaded mode (default: False).')
 @_click.option('--map-only', is_flag=True, default=False, help='Only extract the vector map without running the full simulation (default: False).')
-@_click.argument('cfg_path', type=_click.Path(exists=True), nargs=1)
-def runSimulation(gui, no_warnings, enable_emergency_insertions, pack_size, on_collision, cfg_path,outdir, delay, tar_opt, multi_threaded, map_only):
+@_click.option('-S', '--split', is_flag=True, default=False, help='Whether to split the simulation into multiple parts (default: False). Only used in multi-threaded mode.')
+@_click.argument('basepath', type=_click.Path(exists=True, dir_okay=True, file_okay=True, path_type=_Path), nargs=1)
+def runSimulation(gui, no_warnings, enable_emergency_insertions, pack_size, on_collision, basepath:_Path,outdir, delay, tar_opt, multi_threaded, map_only, split):
     global ACTIVE_LABELS
     print(f"active labels: {ACTIVE_LABELS}")
-    sumo_cfg = _SCFG(_Path(cfg_path))
-    sumo_cfg.checkReqParams()
+    nprocs = _mp.cpu_count() // 2 if multi_threaded else 1
+
+    if not split:
+        scfgp = basepath.resolve() if basepath.is_file() else (basepath / "cfg.sumocfg").resolve()
+        scfg = _SCFG(scfgp)
+        scfg.checkReqParams()
+    else:
+        scfgps = [ basepath.resolve() / f"part{i}" / "cfg.sumocfg" for i in range(nprocs) ]
+        scfgs = [ _SCFG(scfgp) for scfgp in scfgps ]
+        for scfg in scfgs:
+            scfg.checkReqParams()
+        scfg = scfgs[0]  # use first config for map extraction
 
     outdir = _Path(outdir)
     if outdir.exists():
@@ -194,14 +205,13 @@ def runSimulation(gui, no_warnings, enable_emergency_insertions, pack_size, on_c
         outdir.with_suffix('.tar').unlink()
     outdir.mkdir(parents=True, exist_ok=True)
 
-    _MP(sumo_cfg.net_file.resolve()).asVectorDf().to_parquet(outdir / "vmap.parquet", index=False)
+    _MP(scfg.net_file.resolve()).asVectorDf().to_parquet(outdir / "vmap.parquet", index=False)
     _click.echo(f"{_Fore.GREEN}Vector map extracted to {outdir / 'vmap.parquet'}.{_Style.RESET_ALL}")
     if map_only:
         return
     
     start_time = _tpc()
 
-    nprocs = _mp.cpu_count() // 2 if multi_threaded else 1
     # use half of available CPUs to avoid overloading
     _click.echo(f"{_Fore.GREEN}Running simulation with {nprocs} worker{'s in parallel' if nprocs > 1 else ''}...{_Style.RESET_ALL}")
     queue = _mp.Queue()
@@ -209,22 +219,24 @@ def runSimulation(gui, no_warnings, enable_emergency_insertions, pack_size, on_c
     progress_queue = _mp.Queue()
     processes: list[_mp.Process] = []
 
-    sim_time_per_cpu = sumo_cfg.duration_s / nprocs
-    workers_cache_path = (sumo_cfg.sumocfg_file.parent / '.workers_tmp').resolve()
+    sim_time_per_cpu = scfg.duration_s if split else scfg.duration_s / nprocs
+    bdp = basepath.resolve() if basepath.is_dir() else basepath.parent.resolve()
+    workers_cache_path =(bdp / '.workers_tmp').resolve()
     if workers_cache_path.exists():
         _rmrf(workers_cache_path)
 
     # progress logger
-    tot_frames = (_floor(sim_time_per_cpu / sumo_cfg.step_length_s)) * nprocs
+    tot_frames = (_floor(sim_time_per_cpu / scfg.step_length_s)) * nprocs
     progress_logger_proc = _mp.Process(target=tqdm_logger_worker, args=(tot_frames, progress_queue))
     progress_logger_proc.start()
 
     for i in range(nprocs):
+        scfg_i = scfgs[i] if split else scfg
         p = _mp.Process(target=tctl_worker, args=(
             gui,
-            sumo_cfg,
+            scfg_i,
             pack_size,
-            i * sim_time_per_cpu,
+            0 if split else (i * sim_time_per_cpu),
             sim_time_per_cpu,
             on_collision,
             not no_warnings,
