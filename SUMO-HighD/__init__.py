@@ -8,18 +8,10 @@ import numpy as _np
 # Lane change direction: 1 - left, -1 - right
 
 ROUTES = ["est_to_west", "west_to_est"]
-RED_RGBA = (255, 0, 0, 255)
-PURPLE_RGBA = (128, 0, 128, 255)
-GREEN_RGBA = (0, 128, 0, 255)
-BLUE_RGBA = (0, 0, 255, 255)
-
-YELLOW_RGBA = (255, 255, 0, 255)
 
 SPEED_LIMIT = 55
 LANE_LENGTH = 410
 LENGTH_THRESHOLD = 10
-
-VEHICLES_TO_COLOR = dict()
 
 def manually_move_veh(veh, time_dict, frame, delta_pos_dict):
     x, y = _traci.vehicle.getPosition(veh)
@@ -51,7 +43,6 @@ def update_delta_pos_dict(delta_pos_dict, time_dict, veh):
             break
 
 def calculate_cost_over_time(data, frame, vehicle_id):
-    global VEHICLES_TO_COLOR
     costs = _defdict(list)
     start_frame = frame
     end_frame = frame + 10
@@ -69,10 +60,6 @@ def calculate_cost_over_time(data, frame, vehicle_id):
         d = data[f][vehicle_id]
         if d["preceding_id"] != 0:
             id = str(d["preceding_id"])
-            if id in _traci.vehicle.getIDList():
-                _traci.vehicle.setColor(id, PURPLE_RGBA)
-            else:
-                VEHICLES_TO_COLOR[id] = PURPLE_RGBA
             distance = _math.sqrt((d["x"] - data[f][id]["x"])**2 + (d["y"] - data[f][id]["y"])**2)
             relative_speed = abs(d["x_velocity"] - data[f][id]["x_velocity"])
             if relative_speed == 0:
@@ -83,10 +70,6 @@ def calculate_cost_over_time(data, frame, vehicle_id):
             costs["preceding"].append(0)
         if d["following_id"] != 0:
             id = str(d["following_id"])
-            if id in _traci.vehicle.getIDList():
-                _traci.vehicle.setColor(id, GREEN_RGBA)
-            else:
-                VEHICLES_TO_COLOR[id] = GREEN_RGBA
             distance = _math.sqrt((d["x"] - data[f][id]["x"])**2 + (d["y"] - data[f][id]["y"])**2)
             relative_speed = abs(d["x_velocity"] - data[f][id]["x_velocity"])
             if relative_speed == 0:
@@ -97,10 +80,6 @@ def calculate_cost_over_time(data, frame, vehicle_id):
             costs["following"].append(0)
         if d["left_preceding_id"] != 0:
             id = str(d["left_preceding_id"])
-            if id in _traci.vehicle.getIDList():
-                _traci.vehicle.setColor(id, PURPLE_RGBA)
-            else:
-                VEHICLES_TO_COLOR[id] = PURPLE_RGBA
             distance = _math.sqrt((d["x"] - data[f][id]["x"])**2 + (d["y"] - data[f][id]["y"])**2)
             relative_speed = abs(d["x_velocity"] - data[f][id]["x_velocity"])
             if relative_speed == 0:
@@ -111,10 +90,6 @@ def calculate_cost_over_time(data, frame, vehicle_id):
             costs["left_preceding"].append(0)
         if d["left_following_id"] != 0:
             id = str(d["left_following_id"])
-            if id in _traci.vehicle.getIDList():
-                _traci.vehicle.setColor(id, GREEN_RGBA)
-            else:
-                VEHICLES_TO_COLOR[id] = GREEN_RGBA
             distance = _math.sqrt((d["x"] - data[f][id]["x"])**2 + (d["y"] - data[f][id]["y"])**2)
             relative_speed = abs(d["x_velocity"] - data[f][id]["x_velocity"])
             if relative_speed == 0:
@@ -125,10 +100,6 @@ def calculate_cost_over_time(data, frame, vehicle_id):
             costs["left_following"].append(0)
         if d["right_preceding_id"] != 0:
             id = str(d["right_preceding_id"])
-            if id in _traci.vehicle.getIDList():
-                _traci.vehicle.setColor(id, PURPLE_RGBA)
-            else:
-                VEHICLES_TO_COLOR[id] = PURPLE_RGBA
             distance = _math.sqrt((d["x"] - data[f][id]["x"])**2 + (d["y"] - data[f][id]["y"])**2)
             relative_speed = abs(d["x_velocity"] - data[f][id]["x_velocity"])
             if relative_speed == 0:
@@ -139,10 +110,6 @@ def calculate_cost_over_time(data, frame, vehicle_id):
             costs["right_preceding"].append(0)
         if d["right_following_id"] != 0:
             id = str(d["right_following_id"])
-            if id in _traci.vehicle.getIDList():
-                _traci.vehicle.setColor(id, GREEN_RGBA)
-            else:
-                VEHICLES_TO_COLOR[id] = GREEN_RGBA
             distance = _math.sqrt((d["x"] - data[f][id]["x"])**2 + (d["y"] - data[f][id]["y"])**2)
             relative_speed = abs(d["x_velocity"] - data[f][id]["x_velocity"])
             if relative_speed == 0:
@@ -153,10 +120,6 @@ def calculate_cost_over_time(data, frame, vehicle_id):
             costs["right_following"].append(0)
         if d["left_alongside_id"] != 0:
             id = str(d["left_alongside_id"])
-            if id in _traci.vehicle.getIDList():
-                _traci.vehicle.setColor(id, BLUE_RGBA)
-            else:
-                VEHICLES_TO_COLOR[id] = BLUE_RGBA
             distance = _math.sqrt((d["x"] - data[f][id]["x"])**2 + (d["y"] - data[f][id]["y"])**2)
             relative_speed = abs(d["x_velocity"] - data[f][id]["x_velocity"])
             if relative_speed == 0:
@@ -167,10 +130,6 @@ def calculate_cost_over_time(data, frame, vehicle_id):
             costs["left_alongside"].append(0)
         if d["right_alongside_id"] != 0:
             id = str(d["right_alongside_id"])
-            if id in _traci.vehicle.getIDList():
-                _traci.vehicle.setColor(id, BLUE_RGBA)
-            else:
-                VEHICLES_TO_COLOR[id] = BLUE_RGBA
             distance = _math.sqrt((d["x"] - data[f][id]["x"])**2 + (d["y"] - data[f][id]["y"])**2)
             relative_speed = abs(d["x_velocity"] - data[f][id]["x_velocity"])
             if relative_speed == 0:
@@ -287,7 +246,6 @@ def create_time_dict(data):
     return time_dict
 
 def main():
-    global VEHICLES_TO_COLOR
     costs_collection = _defdict(list)
     for i in range(2, 3):
         _traci.start(["sumo-gui", "-c", "highway.sumo.cfg", "--collision.action", "warn", "--lanechange.duration", "1"])
@@ -315,9 +273,6 @@ def main():
                     already_present.add(veh)
                     if move_veh:
                         update_delta_pos_dict(delta_pos_dict, time_dict, veh)
-                    if veh in VEHICLES_TO_COLOR:
-                        _traci.vehicle.setColor(veh, VEHICLES_TO_COLOR[veh])
-                        VEHICLES_TO_COLOR.pop(veh)
                     # print(f"Vehicle {veh} added")
                 else:
                     vehicles = _traci.vehicle.getIDList()
