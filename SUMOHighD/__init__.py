@@ -183,69 +183,87 @@ def create_time_dict(data):
     
     return time_dict
 
-def runTrack(i:int):
-    # _traci.start(["sumo-gui", "-c", "highway.sumo.cfg", "--collision.action", "warn", "--lanechange.duration", "1"])
-    print(f"\nReproducing Trace {i} from SUMO-HighD...\n")
-    _thisfile_path = _Path(__file__).resolve()
-    file = str((_thisfile_path.parent / "data" / f"{i:02d}_newTracks.json").resolve())
-    data = None
-    with open(file) as f:
-        data = _json.load(f)
+class SumoHighDController:
 
-    # Set this variable to True to move the vehicles manually using the (x, y) data from the JSON file
-    # Default is False to let SUMO handle the vehicle movement by just setting the speed
-    move_veh = True
-    
-    time_dict = create_time_dict(data)
-    already_present = set()
-    lc_dict = dict()
-    delta_pos_dict = dict()
-    current_time = 0
-    
-    for frame in time_dict.keys():
-        for veh in time_dict[frame].keys():
-            if veh not in already_present:
+    def __init__(self,*,move_veh:bool):
+        """
+        Initializes the SumoHighDController.
+
+        :param move_veh: If True, vehicles are moved manually using (x, y) data from the JSON file, otherwise SUMO handles the vehicle movement and the controller only sets the speed.
+        """
+        self.move_veh = move_veh
+        self._thisfile_path = _Path(__file__).resolve()
+
+    def startTrack(self, i:int):
+        # _traci.start(["sumo-gui", "-c", "highway.sumo.cfg", "--collision.action", "warn", "--lanechange.duration", "1"])
+        # print(f"\nReproducing Trace {i} from SUMO-HighD...\n")
+        file = str((self._thisfile_path.parent / "tracidata" / f"{i:02d}_newTracks.json").resolve())
+        data = None
+        with open(file) as f:
+            data = _json.load(f)
+
+        self.time_dict = create_time_dict(data)
+        self.already_present = set()
+        self.lc_dict = dict()
+        self.delta_pos_dict = dict()
+        self.current_time = 0
+        
+        self.cur_frame_idx = 0
+
+    def step(self) -> bool:
+        if self.cur_frame_idx >= len(self):
+            return False
+        
+        # for frame in time_dict.keys():
+        frame = self.time_dict.keys()[self.cur_frame_idx]
+        
+        for veh in self.time_dict[frame].keys():
+            if veh not in self.already_present:
                 # Add vehicle to the simulation
-                _add_vehicle(veh, time_dict[frame][veh]["driving_direction"], time_dict[frame][veh]["x_velocity"], time_dict[frame][veh]["lane_id"], time_dict[frame][veh]["x"])
-                already_present.add(veh)
-                if move_veh:
-                    _update_delta_pos_dict(delta_pos_dict, time_dict, veh)
+                _add_vehicle(veh, self.time_dict[frame][veh]["driving_direction"], self.time_dict[frame][veh]["x_velocity"], self.time_dict[frame][veh]["lane_id"], self.time_dict[frame][veh]["x"])
+                self.already_present.add(veh)
+                if self.move_veh:
+                    _update_delta_pos_dict(self.delta_pos_dict, self.time_dict, veh)
                 # print(f"Vehicle {veh} added")
             else:
                 vehicles = _traci.vehicle.getIDList()
                 if veh not in vehicles:
                     # Handle the case where vehicle is no longer present in the simulation but is still present in the JSON file
                     continue
-                x_velocity = time_dict[frame][veh]["x_velocity"]
+                x_velocity = self.time_dict[frame][veh]["x_velocity"]
                 # Limit the speed to 55 m/s
                 if x_velocity > SPEED_LIMIT:
                     x_velocity = SPEED_LIMIT
                 _traci.vehicle.setSpeed(veh, x_velocity)
-                if move_veh:
-                    _manually_move_veh(veh, time_dict, frame, delta_pos_dict)
-                if veh in lc_dict.keys():
-                    next_time, next_lane = lc_dict[veh]
+                if self.move_veh:
+                    _manually_move_veh(veh, self.time_dict, frame, self.delta_pos_dict)
+                if veh in self.lc_dict.keys():
+                    next_time, next_lane = self.lc_dict[veh]
                     # If the vehicle is scheduled to start changing lane at the current frame, change the lane
-                    if next_time == current_time:
+                    if next_time == self.current_time:
                         _traci.vehicle.changeLane(veh, next_lane, 1)
                         # print(f"Vehicle {veh} is changing lane")
-                if time_dict[frame][veh]["lane_change"] != 0:
+                if self.time_dict[frame][veh]["lane_change"] != 0:
                     # Get frame and lane for lane change direction
-                    next_frame, next_lane = _get_next_lane_change(time_dict, frame, veh)
+                    next_frame, next_lane = _get_next_lane_change(self.time_dict, frame, veh)
                     if next_frame and next_lane:
-                        if veh not in lc_dict.keys() or next_lane != lc_dict[veh][1]:
+                        if veh not in self.lc_dict.keys() or next_lane != self.lc_dict[veh][1]:
                             # 10 frames per second, so divide by 10 to get the time in seconds
                             next_time = next_frame / 10
                             # Schedule 1 second before the actual lane change
                             next_time -= 1 
-                            if next_time < current_time:
-                                next_time = current_time + 0.1
+                            if next_time < self.current_time:
+                                next_time = self.current_time + 0.1
                             next_time = float("{:.1f}".format(next_time))
                             # Store the next time and lane for lane change
-                            lc_dict[veh] = (next_time, next_lane)
+                            self.lc_dict[veh] = (next_time, next_lane)
         _traci.simulationStep()
-        current_time = _traci.simulation.getTime()
+        self.current_time = _traci.simulation.getTime()
+        self.cur_frame_idx += 1
 
-    _traci.close()
+        return True
+
+    def __len__(self):
+        return len(self.time_dict.keys())
 
 __all__ = ["runTrack"]
