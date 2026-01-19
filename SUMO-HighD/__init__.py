@@ -1,5 +1,7 @@
 import traci as _traci
 import json as _json
+from pathlib import Path as _Path
+from typing import Literal as _Lit
 
 # Lane change direction: 1 - left, -1 - right
 
@@ -95,7 +97,7 @@ def _get_next_lane_change(time_dict, current_frame, vehicle_id):
                     return frame, lane
     return None, None
 
-def _add_vehicle(veh, driving_direction, x_velocity, lane_id, x):
+def _add_vehicle(veh, driving_direction: _Lit["right", "left"], x_velocity, lane_id, x):
     """
     Adds a vehicle to the SUMO simulation with specified parameters.
 
@@ -184,7 +186,8 @@ def create_time_dict(data):
 def runTrack(i:int):
     # _traci.start(["sumo-gui", "-c", "highway.sumo.cfg", "--collision.action", "warn", "--lanechange.duration", "1"])
     print(f"\nReproducing Trace {i} from SUMO-HighD...\n")
-    file = f"data/0{i}_newTracks.json" if i < 10 else f"data/{i}_newTracks.json"
+    _thisfile_path = _Path(__file__).resolve()
+    file = str((_thisfile_path.parent / "data" / f"{i:02d}_newTracks.json").resolve())
     data = None
     with open(file) as f:
         data = _json.load(f)
