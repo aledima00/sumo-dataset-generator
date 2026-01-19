@@ -9,7 +9,15 @@ SPEED_LIMIT = 55
 LANE_LENGTH = 410
 LENGTH_THRESHOLD = 10
 
-def manually_move_veh(veh, time_dict, frame, delta_pos_dict):
+def _manually_move_veh(veh, time_dict, frame, delta_pos_dict):
+    """
+    Moves a vehicle to a specific (x, y) position based on precomputed delta positions.
+    
+    :param veh: Vehicle ID
+    :param time_dict: Dictionary containing vehicle data over time
+    :param frame: Current frame number
+    :param delta_pos_dict: Dictionary containing precomputed delta positions for vehicles
+    """
     x, y = _traci.vehicle.getPosition(veh)
     if frame not in delta_pos_dict[veh].keys():
         return
@@ -20,30 +28,48 @@ def manually_move_veh(veh, time_dict, frame, delta_pos_dict):
         route = ROUTES[0]
     else:
         route = ROUTES[1]
-    lane = time_dict[frame][veh]["lane_id"] - 1 if time_dict[frame][veh]["lane_id"] <= 3 else time_dict[frame][veh]["lane_id"] - 4
+    # lane = time_dict[frame][veh]["lane_id"] - 1 if time_dict[frame][veh]["lane_id"] <= 3 else time_dict[frame][veh]["lane_id"] - 4
     # _traci.vehicle.moveTo(veh, route.replace("_to_", "_") + "_" + str(int(lane)), x - delta_x)
     _traci.vehicle.moveToXY(veh, route, time_dict[frame][veh]["lane_id"], x - delta_x, y + delta_y, keepRoute=0)
 
-def update_delta_pos_dict(delta_pos_dict, time_dict, veh):
+def _update_delta_pos_dict(delta_pos_dict, time_dict, veh):
+    """
+    Precomputes the delta positions for a vehicle between consecutive frames.
+    The delta positions are computed as the difference in (x, y) coordinates between consecutive frames.
+
+    :param delta_pos_dict: Dictionary to store delta positions
+    :param time_dict: Dictionary containing vehicle data over time
+    :param veh: Vehicle ID
+    """
+    # compare positions between consecutive frames
     for i, f in enumerate(time_dict.keys()):
         if i == 0:
-            continue
+            continue # Skip if no previous frame
         prev_frame = list(time_dict.keys())[i-1]
         if veh not in time_dict[prev_frame].keys():
-            continue
+            continue # Skip if vehicle not present in previous frame
+
         if veh in time_dict[f].keys():
             if veh not in delta_pos_dict.keys():
                 delta_pos_dict[veh] = dict()
             delta_pos_dict[veh][f] = (time_dict[f][veh]["x"] - time_dict[prev_frame][veh]["x"], time_dict[f][veh]["y"] - time_dict[prev_frame][veh]["y"])
         else:
-            break
+            break # Stop if vehicle is no longer present
 
-def get_next_lane_change(time_dict, current_frame, vehicle_id):
-    """Look ahead to find the next lane change for a vehicle"""
+def _get_next_lane_change(time_dict, current_frame, vehicle_id):
+    """
+    Look ahead in the time_dict to find the next lane change for a given vehicle.
+
+    :param time_dict: Dictionary containing vehicle data over time
+    :param current_frame: Current frame number
+    :param vehicle_id: Vehicle ID
+    :return: Tuple of (next_frame, next_lane) where next_frame is the frame number of the lane change and next_lane is the target lane ID, or (None, None) if no lane change is found
+    """
     current_lane = None
     frames = sorted(time_dict.keys())
     current_idx = frames.index(current_frame)
     
+    # loop on future frames only
     for frame in frames[current_idx:]:
         if vehicle_id in time_dict[frame]:
             if current_lane is None:
@@ -69,7 +95,16 @@ def get_next_lane_change(time_dict, current_frame, vehicle_id):
                     return frame, lane
     return None, None
 
-def add_vehicle(veh, driving_direction, x_velocity, lane_id, x):
+def _add_vehicle(veh, driving_direction, x_velocity, lane_id, x):
+    """
+    Adds a vehicle to the SUMO simulation with specified parameters.
+
+    :param veh: Vehicle ID
+    :param driving_direction: Direction of driving ("right" or "left"), used to choose the route
+    :param x_velocity: Initial velocity of the vehicle in the driving direction
+    :param lane_id: Lane ID from the JSON data
+    :param x: Initial x position of the vehicle along the lane
+    """
     vehicleID = veh
     route = None
     lane = None
@@ -99,6 +134,11 @@ def add_vehicle(veh, driving_direction, x_velocity, lane_id, x):
     _traci.vehicle.setLaneChangeMode(vehicleID, 0)
 
 def create_time_dict(data):
+    """
+    Creates a time-based dictionary loading vehicle data from the json input file.
+
+    :param data: Dictionary containing vehicle data loaded from JSON
+    """
     time_dict = dict()
     frames = set()
     for k in data.keys():
@@ -118,28 +158,26 @@ def create_time_dict(data):
             i = 0
 
     frames = tmp_frames
-    counter = 0
-    for f in frames:
-        time_dict[counter] = dict()
+    for cnt,f in enumerate(frames):
+        time_dict[cnt] = dict()
         for k in data.keys():
             if f in data[k]["frame"]:
-                time_dict[counter][k] = dict()
+                time_dict[cnt][k] = dict()
                 frame_index = data[k]["frame"].index(f)
-                time_dict[counter][k]["lane_change"] = data[k]["laneChange"]
-                time_dict[counter][k]["driving_direction"] = data[k]["drivingDirection"]
-                time_dict[counter][k]["x"] = data[k]["x"][frame_index]
-                time_dict[counter][k]["y"] = data[k]["y"][frame_index]
-                time_dict[counter][k]["x_velocity"] = data[k]["xVelocity"][frame_index]
-                time_dict[counter][k]["lane_id"] = data[k]["laneId"][frame_index]
-                time_dict[counter][k]["preceding_id"] = data[k]["precedingId"][frame_index]
-                time_dict[counter][k]["following_id"] = data[k]["followingId"][frame_index]
-                time_dict[counter][k]["left_preceding_id"] = data[k]["leftPrecedingId"][frame_index]
-                time_dict[counter][k]["left_following_id"] = data[k]["leftFollowingId"][frame_index]
-                time_dict[counter][k]["right_preceding_id"] = data[k]["rightPrecedingId"][frame_index]
-                time_dict[counter][k]["right_following_id"] = data[k]["rightFollowingId"][frame_index]
-                time_dict[counter][k]["left_alongside_id"] = data[k]["leftAlongsideId"][frame_index]
-                time_dict[counter][k]["right_alongside_id"] = data[k]["rightAlongsideId"][frame_index]
-        counter += 1
+                time_dict[cnt][k]["lane_change"] = data[k]["laneChange"]
+                time_dict[cnt][k]["driving_direction"] = data[k]["drivingDirection"]
+                time_dict[cnt][k]["x"] = data[k]["x"][frame_index]
+                time_dict[cnt][k]["y"] = data[k]["y"][frame_index]
+                time_dict[cnt][k]["x_velocity"] = data[k]["xVelocity"][frame_index]
+                time_dict[cnt][k]["lane_id"] = data[k]["laneId"][frame_index]
+                time_dict[cnt][k]["preceding_id"] = data[k]["precedingId"][frame_index]
+                time_dict[cnt][k]["following_id"] = data[k]["followingId"][frame_index]
+                time_dict[cnt][k]["left_preceding_id"] = data[k]["leftPrecedingId"][frame_index]
+                time_dict[cnt][k]["left_following_id"] = data[k]["leftFollowingId"][frame_index]
+                time_dict[cnt][k]["right_preceding_id"] = data[k]["rightPrecedingId"][frame_index]
+                time_dict[cnt][k]["right_following_id"] = data[k]["rightFollowingId"][frame_index]
+                time_dict[cnt][k]["left_alongside_id"] = data[k]["leftAlongsideId"][frame_index]
+                time_dict[cnt][k]["right_alongside_id"] = data[k]["rightAlongsideId"][frame_index]
     
     return time_dict
 
@@ -165,10 +203,10 @@ def runTrack(i:int):
         for veh in time_dict[frame].keys():
             if veh not in already_present:
                 # Add vehicle to the simulation
-                add_vehicle(veh, time_dict[frame][veh]["driving_direction"], time_dict[frame][veh]["x_velocity"], time_dict[frame][veh]["lane_id"], time_dict[frame][veh]["x"])
+                _add_vehicle(veh, time_dict[frame][veh]["driving_direction"], time_dict[frame][veh]["x_velocity"], time_dict[frame][veh]["lane_id"], time_dict[frame][veh]["x"])
                 already_present.add(veh)
                 if move_veh:
-                    update_delta_pos_dict(delta_pos_dict, time_dict, veh)
+                    _update_delta_pos_dict(delta_pos_dict, time_dict, veh)
                 # print(f"Vehicle {veh} added")
             else:
                 vehicles = _traci.vehicle.getIDList()
@@ -181,7 +219,7 @@ def runTrack(i:int):
                     x_velocity = SPEED_LIMIT
                 _traci.vehicle.setSpeed(veh, x_velocity)
                 if move_veh:
-                    manually_move_veh(veh, time_dict, frame, delta_pos_dict)
+                    _manually_move_veh(veh, time_dict, frame, delta_pos_dict)
                 if veh in lc_dict.keys():
                     next_time, next_lane = lc_dict[veh]
                     # If the vehicle is scheduled to start changing lane at the current frame, change the lane
@@ -190,7 +228,7 @@ def runTrack(i:int):
                         # print(f"Vehicle {veh} is changing lane")
                 if time_dict[frame][veh]["lane_change"] != 0:
                     # Get frame and lane for lane change direction
-                    next_frame, next_lane = get_next_lane_change(time_dict, frame, veh)
+                    next_frame, next_lane = _get_next_lane_change(time_dict, frame, veh)
                     if next_frame and next_lane:
                         if veh not in lc_dict.keys() or next_lane != lc_dict[veh][1]:
                             # 10 frames per second, so divide by 10 to get the time in seconds
