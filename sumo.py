@@ -6,13 +6,18 @@ from sumodetector.console import SimulationController as SimCtl
 from sumodetector.labels import LabelsEnum as _LE
 from sumodetector.tup import TraciUpdater
 from sumodetector.tracictl import CollisionAction
+from SUMOHighD import SumoHighDController as _SHDC
 
 
 class HighDLiveTraciUpdater(TraciUpdater):
+    def __init__(self,i=2):
+        self.__sumo_highd_controller = _SHDC(move_veh=True)
+        self.__sumo_highd_controller.startTrack(i)
     def jumpTo(self, sim_time):
         raise ValueError("HighDLiveTraciUpdater does not support jumpTo operation, as the update is tied to real-time.")
     def update(self):
-        pass
+        return self.__sumo_highd_controller.step()
+        
 
 ACTIVE_LABELS = {_LE.COLLISION}
 TRACI_UPDATER = HighDLiveTraciUpdater()

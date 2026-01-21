@@ -35,10 +35,12 @@ class FrameVState:
 
 CollisionAction = _Lit["teleport", "warn", "none", "remove"]
 
-def getStTypeFromVTypeID(vtype_id:str)->int:
+def getStTypeFromVTypeID(vtype_id:str,*,default:int|None=None)->int:
     match = _re.search(r"^ST(\d+)(_|$)", vtype_id)
     if match:
         return int(match.group(1))
+    elif default is not None:
+        return default
     else:
         raise ValueError(f"Invalid vType ID format: {vtype_id}")
 
@@ -455,7 +457,8 @@ class TraciController:
                 vtid = _traci.vehicle.getTypeID(vid)
                 width = _traci.vehicle.getWidth(vid)
                 length = _traci.vehicle.getLength(vid)
-                self.tryAddVInfo(vid,w=width,l=length,stType=getStTypeFromVTypeID(vtid))
+                sttype = getStTypeFromVTypeID(vtid, default=5) # default to car
+                self.tryAddVInfo(vid,w=width,l=length,stType=sttype)
                 vdata = _VD(id=vid, position=pos, speed=speed, angle=angle)
                 frame.vehicles.append(vdata)
         return frame

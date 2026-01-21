@@ -215,7 +215,7 @@ class SumoHighDController:
             return False
         
         # for frame in time_dict.keys():
-        frame = self.time_dict.keys()[self.cur_frame_idx]
+        frame = list(self.time_dict.keys())[self.cur_frame_idx]
         
         for veh in self.time_dict[frame].keys():
             if veh not in self.already_present:
