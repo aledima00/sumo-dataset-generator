@@ -1,6 +1,6 @@
 import click
 from pathlib import Path
-from typing import get_args
+from typing import get_args, Literal as Lit, TypeAlias as TA
 
 from sumodetector.console import SimulationController as SimCtl
 from sumodetector.labels import LabelsEnum as _LE
@@ -20,8 +20,10 @@ class HighDLiveTraciUpdater(TraciUpdater):
         
 
 ACTIVE_LABELS = {_LE.COLLISION}
-TRACI_UPDATER = HighDLiveTraciUpdater()
 
+def get_hdtup_instance():
+    return HighDLiveTraciUpdater()
+tup_type:TA= Lit['highd-live', 'simple']
 
 @click.command()
 @click.option('--gui','-g', is_flag=True, default=False, help='Run SUMO with GUI')
@@ -35,11 +37,12 @@ TRACI_UPDATER = HighDLiveTraciUpdater()
 @click.option('-M', '--multi-threaded', 'multi_threaded', is_flag=True, default=False, help='Whether to run the simulation in multi-threaded mode (default: False).')
 @click.option('--map-only', is_flag=True, default=False, help='Only extract the vector map without running the full simulation (default: False).')
 @click.option('-S', '--split', is_flag=True, default=False, help='Whether to split the simulation into multiple parts (default: False). Only used in multi-threaded mode.')
+@click.option('--tup', '-T','tup', type=click.Choice(get_args(tup_type)), default='simple', help='Type of TraciUpdater to use (default: simple).')
 @click.argument('basepath', type=click.Path(exists=True, dir_okay=True, file_okay=True, path_type=Path), nargs=1)
-def console(gui:bool, no_warnings:bool, enable_emergency_insertions:bool, pack_size:int, on_collision:CollisionAction, basepath:Path,outdir:Path, delay:float, tar_opt:bool, multi_threaded:bool, map_only:bool, split:bool):
+def console(gui:bool, no_warnings:bool, enable_emergency_insertions:bool, pack_size:int, on_collision:CollisionAction, basepath:Path,outdir:Path, delay:float, tar_opt:bool, multi_threaded:bool, map_only:bool, split:bool, tup:tup_type):
     simctl = SimCtl(
         active_labels=ACTIVE_LABELS,
-        #traci_updater=TRACI_UPDATER,
+        traci_updater=get_hdtup_instance() if tup=='highd-live' else None,
         gui=gui,
         no_warnings=no_warnings,
         enable_emergency_insertions=enable_emergency_insertions,
