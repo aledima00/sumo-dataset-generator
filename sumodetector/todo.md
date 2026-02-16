@@ -1,1 +1,0 @@
-- remove PIR detection for when there is no sidewalk, instead base detection there on position withing the edge (rightmost lane) and lane
