@@ -21,8 +21,8 @@ class HighDLiveTraciUpdater(TraciUpdater):
 
 ACTIVE_LABELS = {_LE.COLLISION}
 
-def get_hdtup_instance():
-    return HighDLiveTraciUpdater()
+def get_hdtup_instance(i:int=2):
+    return HighDLiveTraciUpdater(i=i)
 tup_type:TA= Lit['highd-live', 'simple']
 
 @click.command()
