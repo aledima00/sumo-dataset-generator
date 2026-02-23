@@ -15,10 +15,10 @@ additional_attributes={
     "departPos":"base",
     "departSpeed":"random",
     "departPosLat":"random",
-    "arrivalLane":"first",
+    "arrivalLane":"current",
     "arrivalPos":"max",
-    "arrivalSpeed":"0.0",
-    "arrivalPosLat":"right",
+    "arrivalSpeed":"current",
+    #"arrivalPosLat":"default",
     "insertionChecks":"none"
 }
 

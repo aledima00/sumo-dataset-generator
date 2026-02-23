@@ -27,7 +27,7 @@ tup_type:TA= Lit['highd-live', 'simple']
 
 @click.command()
 @click.option('--gui','-g', is_flag=True, default=False, help='Run SUMO with GUI')
-@click.option('--no-warnings', is_flag=True, default=False, help='Suppress SUMO warnings.')
+@click.option('-W','--no-warnings', is_flag=True, default=False, help='Suppress SUMO warnings.')
 @click.option('-E','--enable-emergency-insertions', 'enable_emergency_insertions', is_flag=True, default=False, help='Enable insertion of emergency vehicles during simulation (default: False).')
 @click.option('--pack-size','-p', type=int, default=20, help='Number of frames in each pack (default: 20).')
 @click.option('--on-collision', type=click.Choice(get_args(CollisionAction)), default=None, help='Action to take on collision (default: None).')
