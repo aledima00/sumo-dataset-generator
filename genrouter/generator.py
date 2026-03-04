@@ -106,7 +106,7 @@ class Generator:
             used_vtypes.add(vt)
             rt = routes[i % len(routes)]
             used_routes.add(rt)
-            vehicles.append(_VH(f"VEH_{i}", vt.id, rt.id, dpts[i],additional_attributes=additional_attributes))
+            vehicles.append(_VH(f"veh{i}", vt.id, rt.id, dpts[i],additional_attributes=additional_attributes))
 
         for on in range(self.obstacle_num):
             rt = routes[(self.VNUM+on) % len(routes)]
