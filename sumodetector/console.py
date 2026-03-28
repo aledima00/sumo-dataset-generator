@@ -21,6 +21,7 @@ from .sumocfg import SumoCfg as _SCFG
 from .labels import LabelsEnum as _LE
 from .map import MapParser as _MP
 from .tup import SimpleTraciUpdater as _SimpleTraciUpdater, TraciUpdater as _TraciUpdater
+from .packBufferedWriter import OpMode as _OpMode
 
 def getMaxPackId(df:_pd.DataFrame)->int:
     """
@@ -95,7 +96,7 @@ def tar(src_folder:_Path):
     with _tarfile.open(tarpath, "w") as tar:
         tar.add(src_folder, arcname="data")
 
-def tctl_worker(gui,scfg,frame_pack_size,start_time_s,sim_time_s,on_collision,warnings,emergency_insertions,delay,*,queue:_mp.Queue,progress_queue:_mp.Queue, idx:int, excqueue:_mp.Queue, temp_path:_Path=None, active_labels:set[_LE], traci_updater:_TraciUpdater):
+def tctl_worker(gui,scfg,frame_pack_size,start_time_s,sim_time_s,on_collision,warnings,emergency_insertions,delay,*,queue:_mp.Queue,progress_queue:_mp.Queue, idx:int, excqueue:_mp.Queue, temp_path:_Path=None, active_labels:set[_LE], traci_updater:_TraciUpdater, pbw_opmode:_OpMode):
     # CONTROL THIS IMPLEMENTATION
     bp = temp_path if temp_path is not None else _Path.cwd()
     controller = TraciController(
@@ -111,7 +112,8 @@ def tctl_worker(gui,scfg,frame_pack_size,start_time_s,sim_time_s,on_collision,wa
         printfunc=_click.echo,
         tlog=False,
         active_labels=active_labels,
-        traci_updater=traci_updater
+        traci_updater=traci_updater,
+        pbw_opmode=pbw_opmode
     )
     def handle_sigusr1(signum, frame):
         _click.echo(f"{_Fore.YELLOW}Worker {idx} received SIGUSR1 ({signum}), terminating simulation...{_Style.RESET_ALL}")
@@ -165,7 +167,7 @@ def tqdm_logger_worker(totFrames:int, doneQueue:_mp.Queue):
 ALL_LABELS = {v for v in _LE}
 TRACI_UPDATER = _SimpleTraciUpdater()
 class SimulationController:
-    def __init__(self,*,active_labels:set[_LE]=ALL_LABELS,traci_updater:_TraciUpdater=TRACI_UPDATER, gui:bool, no_warnings:bool, enable_emergency_insertions:bool, pack_size:int, on_collision:CollisionAction, basepath:_Path,outdir:_Path, delay:float, tar_opt:bool, multi_threaded:bool, map_only:bool, split:bool):
+    def __init__(self,*,active_labels:set[_LE]=ALL_LABELS,traci_updater:_TraciUpdater=TRACI_UPDATER, gui:bool, no_warnings:bool, enable_emergency_insertions:bool, pack_size:int, on_collision:CollisionAction, basepath:_Path,outdir:_Path, delay:float, tar_opt:bool, multi_threaded:bool, map_only:bool, split:bool,pbw_opmode:_OpMode):
         self.active_labels = active_labels
         self.traci_updater = traci_updater
         self.gui = gui
@@ -180,7 +182,7 @@ class SimulationController:
         self.multi_threaded = multi_threaded
         self.map_only = map_only
         self.split = split
-
+        self.pbw_opmode = pbw_opmode
     def run(self):
         print(f"active labels: {self.active_labels}")
         nprocs = _mp.cpu_count() // 2 if self.multi_threaded else 1
@@ -246,7 +248,8 @@ class SimulationController:
                 'excqueue': excqueue,
                 'temp_path': workers_cache_path,
                 'active_labels': self.active_labels,
-                'traci_updater': self.traci_updater
+                'traci_updater': self.traci_updater,
+                'pbw_opmode': self.pbw_opmode
             })
             processes.append(p)
             p.start()

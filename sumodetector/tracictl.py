@@ -8,7 +8,7 @@ from .map import MapParser as _MP
 from .sumocfg import SumoCfg as _SCFG
 from .pack import PackSchema as _PKS, pack2pandas as _p2df, Frame as _FR, VehicleData as _VD, VInfo as _VI, PInfo as _PI
 from .tup import TraciUpdater as _TraciUpdater, SimpleTraciUpdater as _SimpleTraciUpdater
-
+from .packBufferedWriter import PackBufferedWriter as _PBW, OpMode as _OpMode
 
 from colorama import Fore as _Fore, Style as _Style
 import re as _re
@@ -72,9 +72,10 @@ class TraciController:
 
     map_parser:_MP
     cfg:_SCFG
+    pbw_opmode: _OpMode
 
 
-    def __init__(self,*,gui:bool,sumo_cfg:_SCFG,frame_pack_size:int,sim_time_s:float,start_time_s:float,on_collision:CollisionAction='none',warnings:bool,emergency_insertions:bool,delay:float=None,active_labels:set[_LE],printfunc=None,tlog:bool=False,traci_updater:_TraciUpdater=None):
+    def __init__(self,*,gui:bool,sumo_cfg:_SCFG,frame_pack_size:int,sim_time_s:float,start_time_s:float,on_collision:CollisionAction='none',warnings:bool,emergency_insertions:bool,delay:float=None,active_labels:set[_LE],printfunc=None,tlog:bool=False,traci_updater:_TraciUpdater=None, pbw_opmode:_OpMode="absolute"):
         self.gui = gui
         self.cfg = sumo_cfg
         self.step_len = sumo_cfg.step_length_s
@@ -112,6 +113,9 @@ class TraciController:
 
         # traci updater
         self.traci_updater = traci_updater if traci_updater is not None else _SimpleTraciUpdater()
+
+        # pack buffered writer opmode
+        self.pbw_opmode = pbw_opmode
 
     def tlog(self, val:str):
         if self.__tlog_enabled:
@@ -342,11 +346,12 @@ class TraciController:
     
     def run(self,save_dirpath:_Path,progress_queue:_mp.Queue=None):
 
-        pbw = PackBufferedWriter(
+        pbw = _PBW(
             save_dirpath=save_dirpath,
             num_packs_buffered=2000,
             frames_per_pack=self.frame_pack_size,
-            startPackId=0
+            startPackId=0,
+            opmode=self.pbw_opmode
         )
 
         # define parameters and start simulation
