@@ -1,5 +1,6 @@
 {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://raw.githubusercontent.com/aledima00/sumo-dataset-generator/refs/heads/master/gparams-schema.json",
     "definitions": {
         "DistractedDriver": {
             "type": "object",
@@ -36,7 +37,7 @@
             "type":"object",
             "properties": {
                 "name":{"type":"string", "const": "TimeMovingGaussian", "description": "TimeMovingGaussian drawing method: the mean value moves linearly from min to max over the total simulation time."},
-                "tdevprop":{"type":"number", "minimum":0.001, "description":"Standard deviation of each gaussian expressed as proportion of the total interval."},
+                "tdevprop":{"type":"number", "minimum":0, "description":"Standard deviation of each gaussian expressed as proportion of the total interval."},
                 "onBorders":{"type":"string", "description":"What to do when the drawn value falls outside the allowed range,\n - Clamp: to clamp the value to the nearest boundary (default),\n - Redistribute: to redraw the value with a uniform distribution forcing it to fall within the allowed range.", "enum":["Clamp","Redistribute"]},
                 "sigmaScaling":{"type":"string", "description":"Whether to apply a scaling to the standard deviation when getting closer to borders of the allowed range;\n - None: no scaling (default),\n - Triangular: triangular scaling,\n - Quadratic: quadratic scaling.", "enum":["None","Triangular","Quadratic"]}
             },
