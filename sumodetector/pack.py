@@ -63,12 +63,10 @@ class VehicleData:
 
 @_dc
 class Frame:
-    pedestrians:list[VehicleData] = _field(default_factory=list)
     vehicles:list[VehicleData] = _field(default_factory=list)
     def asPandas(self,id:int) -> _pd.DataFrame:
-        peds_df = _pd.concat([pd.asPandas() for pd in self.pedestrians], ignore_index=True) if len(self.pedestrians) > 0 else _pd.DataFrame()
         vehs_df = _pd.concat([vd.asPandas() for vd in self.vehicles], ignore_index=True) if len(self.vehicles) > 0 else _pd.DataFrame()
-        df = _pd.concat([peds_df, vehs_df], ignore_index=True)
+        df = vehs_df
         if df.empty:
             return df
         df["FrameId"] = id

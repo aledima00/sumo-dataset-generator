@@ -106,11 +106,7 @@
         "steplen": {"type": "number", "minimum": 0.001, "description": "Simulation step length in seconds."},
         "minrtlen": {"type": "number", "minimum": 1, "description": "Minimum vehicles route steps."},
         "maxrtlen": {"type": "number", "minimum": 1, "description": "Maximum vehicles route steps."},
-        "obstacles": {"type": "integer", "minimum": 0, "description": "Number of obstacles to randomly drop in the network."},
         "vnum": {"type": "integer", "minimum": 0, "description": "Number of vehicles to generate."},
-        "minwalklen": {"type": "number", "minimum": 1, "description": "Minimum pedestrians route steps."},
-        "maxwalklen": {"type": "number", "minimum": 1, "description": "Maximum pedestrians route steps."},
-        "pnum": {"type": "integer", "minimum": 0, "description": "Number of pedestrians to generate."},
         "vDrawMethod": {
             "oneOf": [
                 {"$ref": "#/definitions/UniformDrawMethod", "description": "Uniform drawing method for vehicle insertion times."},

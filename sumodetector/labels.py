@@ -7,19 +7,13 @@ class LabelsEnum(_IE):
     OVERTAKE = 2
     TURN_INTENT = 3
     COLLISION = 4
-    LANE_MERGE = 5
-    OBSTACLE_IN_ROAD = 6
-    SLOWDOWN = 7
 
 shorts ={
     LabelsEnum.LANE_CHANGE: "LCH",
     LabelsEnum.EMERGENCY_BRAKING: "EBK",
     LabelsEnum.OVERTAKE: "OTK",
     LabelsEnum.TURN_INTENT: "TRN",
-    LabelsEnum.COLLISION: "COL",
-    LabelsEnum.LANE_MERGE: "LMG",
-    LabelsEnum.OBSTACLE_IN_ROAD: "OIR",
-    LabelsEnum.SLOWDOWN: "SLD"
+    LabelsEnum.COLLISION: "COL"
 }
 
 class MultiLabel:

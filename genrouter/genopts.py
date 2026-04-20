@@ -5,17 +5,12 @@ from typing import Literal as _Lit
 import random as _RND
 
 from .vehicles import IParams as _IP, VParams as _VP
-from .persons import PersonParams as _PP
 
 # default generation params
 DEF_MIN_RTLEN = 10
 DEF_MAX_RTLEN = 20
-DEF_MIN_WALKLEN = 2
-DEF_MAX_WALKLEN = 8
 DEF_VNUM = 100
-DEF_PNUM = 0
 # DEF_TDEV_PROP = 0.1
-DEF_OBSTACLES = 0
 
 def _indp(strval:str,*,indnl:int,):
     return print(strval,end="\n"+"  " * indnl if indnl>=0 else "")
@@ -120,14 +115,9 @@ class GenOptions:
     split: bool = False
     steplen: float = None
     nroutes: int = None
-    nwalks: int = None
     minrtlen: int = DEF_MIN_RTLEN
     maxrtlen: int = DEF_MAX_RTLEN
-    minwalklen: int = DEF_MIN_WALKLEN
-    maxwalklen: int = DEF_MAX_WALKLEN
     vnum: int = DEF_VNUM
-    pnum: int = DEF_PNUM
-    obstacles: int = DEF_OBSTACLES
 
     source_edges: list[str] = _field(default_factory=list)
     
@@ -135,7 +125,6 @@ class GenOptions:
     IndividualParams: list[dict] = _field(default_factory=list)
     ClassParams: list[dict] = _field(default_factory=list)
     Modifiers: list[dict] = _field(default_factory=list)
-    PersonParams: list[dict] = _field(default_factory=list)
 
     vDrawMethod: dict = _field(default_factory=dict)
 
@@ -145,9 +134,6 @@ class GenOptions:
             gopts.time = gopts.time // divide_by
             gopts.vnum = gopts.vnum // divide_by
             gopts.nroutes = gopts.nroutes // divide_by
-            gopts.pnum = gopts.pnum // divide_by
-            gopts.nwalks = gopts.nwalks // divide_by
-            gopts.obstacles = gopts.obstacles // divide_by
         return gopts
 
 
@@ -159,9 +145,7 @@ class GenOptions:
     
     def normalizeNullish(self):
         if self.nroutes is None:
-            self.nroutes = self.vnum + self.obstacles
-        if self.nwalks is None:
-            self.nwalks = self.pnum
+            self.nroutes = self.vnum
     
     def loadYaml(self,yaml_path:_Path):
         emptyyml:bool = False
@@ -185,7 +169,6 @@ class GenOptions:
         _normalize_dict(self.VehicleParams)
         _normalize_dict(self.IndividualParams)
         _normalize_dict(self.ClassParams) # to be done
-        _normalize_dict(self.PersonParams)
     
     def dump(self,yaml_path:_Path):
         options_dict = _asdict(self)
@@ -207,8 +190,6 @@ class GenOptions:
         return _ld_to_dt(self.VehicleParams,_VP)
     def VCLDict(self)->dict:
         return _ld_to_dt(self.ClassParams,str)
-    def PPDict(self)->dict:
-        return _ld_to_dt(self.PersonParams,_PP)
     def ModDict(self)->dict:
         return _ld_to_dt(self.Modifiers,dict)
     def VDrawMethod(self)->VehicleDrawMethod:

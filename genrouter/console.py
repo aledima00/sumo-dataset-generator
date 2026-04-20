@@ -68,10 +68,7 @@ def generate(yfname:_Path):
             ("TOTAL SIMULATION TIME (S)", options.time),
             ("SIMULATION STEP LENGTH (S)", options.steplen),
             ("NUM. OF ROUTES", options.nroutes),
-            ("NUM. OF WALKS", options.nwalks),
-            ("NUM. OF OBSTACLES", options.obstacles),
             ("NUM. OF VEHICLES", options.vnum),
-            ("NUM. OF PEDESTRIANS", options.pnum),
             #TODO: add num. of unique vtypes
         ]
         _clk.echo(f"{_Fore.GREEN}Generation completed successfully!{_Style.RESET_ALL}"+"".join([f"\n{_Fore.YELLOW}  - {k}{_Style.RESET_ALL}: {v}" for k,v in prints]))

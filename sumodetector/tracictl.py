@@ -56,9 +56,6 @@ class TraciController:
 
     # thresholds
     ebk_time_threshold_s:float
-    merge_speed_threshold:float
-    slowdown_traffic_threshold:float
-    traffic_jam_min_size:int
 
     # state variables
     max_speed_per_lane:dict[str,float]
@@ -96,9 +93,6 @@ class TraciController:
         self.th_ebk_per_vt = dict()
         self.ebk_prop_threshold = 0.50
         self.ebk_time_threshold_s = 0.05 #TODO:CHECK if it's ok to use time-based threshold for this
-        self.merge_speed_threshold = 0.3
-        self.slowdown_traffic_threshold = 0.1
-        self.traffic_jam_min_size = 8
 
         # last step vstates
         self.last_step_vstates = dict()
@@ -140,7 +134,7 @@ class TraciController:
     @staticmethod
     def __getRealEdgeLeader(vid:str)->str|None:
         eid = TraciController.__getVehEdge(vid)
-        vehs = sorted(filter( lambda x: not str(x).startswith("OBS_"), _traci.edge.getLastStepVehicleIDs(eid)),key=lambda x: _traci.vehicle.getLanePosition(x))
+        vehs = sorted( _traci.edge.getLastStepVehicleIDs(eid), key=lambda x: _traci.vehicle.getLanePosition(x))
 
         nextv = None
         for i,vidi in enumerate(vehs):
@@ -161,25 +155,24 @@ class TraciController:
         self.last_step_vstates = {vid: vstate for vid,vstate in self.last_step_vstates.items() if vid in step_vehicles}
 
         for vid in step_vehicles:
-            if not str(vid).startswith("OBS_"):
-                lane_id = _traci.vehicle.getLaneID(vid) 
-                leader_id = self.__getRealEdgeLeader(vid)
-                nojint_lane_id = lane_id if not self.map_parser.isLaneSpecial(lane_id) else None
+            lane_id = _traci.vehicle.getLaneID(vid) 
+            leader_id = self.__getRealEdgeLeader(vid)
+            nojint_lane_id = lane_id if not self.map_parser.isLaneSpecial(lane_id) else None
 
-                # ebk times
-                #vt = _traci.vehicle.getTypeID(vid) # TODO:CHECK if needed
-                acc = _traci.vehicle.getAcceleration(vid)
-                ebktime = 0.0
-                if acc < -self.__getVtEbkTh(vid):
-                    current = self.last_step_vstates.get(vid,None)
-                    ebktime = (current.ebk_time_s if current is not None else 0.0) + self.step_len
+            # ebk times
+            #vt = _traci.vehicle.getTypeID(vid) # TODO:CHECK if needed
+            acc = _traci.vehicle.getAcceleration(vid)
+            ebktime = 0.0
+            if acc < -self.__getVtEbkTh(vid):
+                current = self.last_step_vstates.get(vid,None)
+                ebktime = (current.ebk_time_s if current is not None else 0.0) + self.step_len
 
-                self.last_step_vstates[vid] = FrameVState(
-                    lane_id=lane_id,
-                    lane_id_no_junc_intlane=nojint_lane_id,
-                    leader_id=leader_id,
-                    ebk_time_s=ebktime
-                )
+            self.last_step_vstates[vid] = FrameVState(
+                lane_id=lane_id,
+                lane_id_no_junc_intlane=nojint_lane_id,
+                leader_id=leader_id,
+                ebk_time_s=ebktime
+            )
 
     def __checkCollision(self,lb:_MLB) ->bool:
         clist = _traci.simulation.getCollidingVehiclesIDList()
@@ -191,97 +184,62 @@ class TraciController:
 
     def __checkEmergencyBraking(self,lb:_MLB) ->bool:
         for vid in _traci.vehicle.getIDList():
-            if not str(vid).startswith("OBS_"):
-                #vt = _traci.vehicle.getTypeID(vid)
-                acc = _traci.vehicle.getAcceleration(vid)
+            #vt = _traci.vehicle.getTypeID(vid)
+            acc = _traci.vehicle.getAcceleration(vid)
 
-                if acc < -self.__getVtEbkTh(vid):
-                    ls_vstate = self.last_step_vstates.get(vid,None)
-                    tot_time = (ls_vstate.ebk_time_s if ls_vstate is not None else 0.0) + self.step_len
-                    if tot_time >= self.ebk_time_threshold_s:
-                        self.tlog(f"Emergency Braking detected for vehicle: {vid}")
-                        lb.setLabel(_LE.EMERGENCY_BRAKING)
-                        return True
-        return False
-            
-    def __checkObstacles(self,lb:_MLB) ->bool:
-        for vid in _traci.vehicle.getIDList():
-            if str(vid).startswith("OBS_"):
-                self.tlog(f"Obstacle {vid} detected in simulation.")
-                lb.setLabel(_LE.OBSTACLE_IN_ROAD)
-                return True
-        return False
-            
-    def __checkSlowdown(self,lb:_MLB) ->bool:
-        for laneId in self.max_speed_per_lane.keys():
-
-            vehs_in_lane:tuple[str] = _traci.lane.getLastStepVehicleIDs(laneId)
-            if vehs_in_lane is None or len(vehs_in_lane) < self.traffic_jam_min_size:
-                continue
-
-            avg_speed = _np.mean([_traci.vehicle.getSpeed(vid) for vid in vehs_in_lane])
-
-            ratio = avg_speed / self.baseline_speed_per_lane[laneId]
-            if ratio < self.slowdown_traffic_threshold:
-                self.tlog(f"Traffic jam detected on lane {laneId} with average speed {avg_speed:.2f} m/s ({ratio*100:.1f}% of baseline).")
-                lb.setLabel(_LE.SLOWDOWN)
-                return True
+            if acc < -self.__getVtEbkTh(vid):
+                ls_vstate = self.last_step_vstates.get(vid,None)
+                tot_time = (ls_vstate.ebk_time_s if ls_vstate is not None else 0.0) + self.step_len
+                if tot_time >= self.ebk_time_threshold_s:
+                    self.tlog(f"Emergency Braking detected for vehicle: {vid}")
+                    lb.setLabel(_LE.EMERGENCY_BRAKING)
+                    return True
         return False
         
 
-    def __checkLCLM(self,lb:_MLB) ->bool:
+    def __checkLaneChange(self,lb:_MLB) ->bool:
         for vid in _traci.vehicle.getIDList():
-            if not str(vid).startswith("OBS_"):
-                lane_id = _traci.vehicle.getLaneID(vid)
-                ls_vstate = self.last_step_vstates.get(vid,None)
-                prev_lane_id = ls_vstate.lane_id if ls_vstate is not None else None
-                if prev_lane_id is not None and lane_id != prev_lane_id:
-                    e1id = _traci.lane.getEdgeID(prev_lane_id)
-                    e2id = _traci.lane.getEdgeID(lane_id)
-                    if e1id == e2id:
-                        # generic lc situation
-                        is_lc_lm = self.map_parser.checkIfLcLm(prev_lane_id,lane_id)
-                        if is_lc_lm:
-                            # lane merge situation
-                            self.tlog(f"Vehicle {vid} performed Lane Change corresponding to Lane Merge from lane {prev_lane_id} to {lane_id} on edge {e1id}.")
-                            lb.setLabel(_LE.LANE_MERGE)
-                        else:
-                            # simple lane change
-                            self.tlog(f"Vehicle {vid} changed lane from {prev_lane_id} to {lane_id} on edge {e1id}.")
-                            lb.setLabel(_LE.LANE_CHANGE)
-                        return True
+            lane_id = _traci.vehicle.getLaneID(vid)
+            ls_vstate = self.last_step_vstates.get(vid,None)
+            prev_lane_id = ls_vstate.lane_id if ls_vstate is not None else None
+            if prev_lane_id is not None and lane_id != prev_lane_id:
+                e1id = _traci.lane.getEdgeID(prev_lane_id)
+                e2id = _traci.lane.getEdgeID(lane_id)
+                if e1id == e2id:
+                    # generic lane change situation (only targeting lcs on same edge) (includes lane merges)
+                    self.tlog(f"Vehicle {vid} changed lane from {prev_lane_id} to {lane_id} on edge {e1id}.")
+                    lb.setLabel(_LE.LANE_CHANGE)
+                return True
         return False
                     
     def __checkOvertake(self,lb:_MLB) ->bool:
         for vid in _traci.vehicle.getIDList():
-            if not str(vid).startswith("OBS_"):
-                ls_vstate = self.last_step_vstates.get(vid,None)
-                old_leader_id = ls_vstate.leader_id if ls_vstate is not None else None
-                current_leader_id = self.__getRealEdgeLeader(vid)
-                if old_leader_id is not None and current_leader_id != old_leader_id and (self.__getVehEdge(vid) == self.__getVehEdge(old_leader_id)):
-                    lb.setLabel(_LE.OVERTAKE)
-                    self.tlog(f"Detected Overtake of Vehicle {vid} on {old_leader_id}")
-                    return True
+            ls_vstate = self.last_step_vstates.get(vid,None)
+            old_leader_id = ls_vstate.leader_id if ls_vstate is not None else None
+            current_leader_id = self.__getRealEdgeLeader(vid)
+            if old_leader_id is not None and current_leader_id != old_leader_id and (self.__getVehEdge(vid) == self.__getVehEdge(old_leader_id)):
+                lb.setLabel(_LE.OVERTAKE)
+                self.tlog(f"Detected Overtake of Vehicle {vid} on {old_leader_id}")
+                return True
         return False
                         
     def __checkTurn(self,lb:_MLB) ->bool:
         for vid in _traci.vehicle.getIDList():
-            if not str(vid).startswith("OBS_"):
-                lane_id = _traci.vehicle.getLaneID(vid)
-                ls_vstate = self.last_step_vstates.get(vid,None)
-                prev_lane_id = ls_vstate.lane_id_no_junc_intlane if ls_vstate is not None else None
-                if prev_lane_id is not None and lane_id is not None and lane_id != prev_lane_id and (not self.map_parser.isLaneSpecial(lane_id)):
-                    cont_lane_id = self.map_parser.getContToLaneId(from_lane_id=prev_lane_id)
-                    if cont_lane_id is None or lane_id != cont_lane_id:
-                        # turning detected
-                        lb.setLabel(_LE.TURN_INTENT)
-                        self.tlog(f"Vehicle {vid} performed turn from lane {prev_lane_id} to {lane_id}.")
-                        return True
+            lane_id = _traci.vehicle.getLaneID(vid)
+            ls_vstate = self.last_step_vstates.get(vid,None)
+            prev_lane_id = ls_vstate.lane_id_no_junc_intlane if ls_vstate is not None else None
+            if prev_lane_id is not None and lane_id is not None and lane_id != prev_lane_id and (not self.map_parser.isLaneSpecial(lane_id)):
+                cont_lane_id = self.map_parser.getContToLaneId(from_lane_id=prev_lane_id)
+                if cont_lane_id is None or lane_id != cont_lane_id:
+                    # turning detected
+                    lb.setLabel(_LE.TURN_INTENT)
+                    self.tlog(f"Vehicle {vid} performed turn from lane {prev_lane_id} to {lane_id}.")
+                    return True
         return False
                     
     def __checkFrameByLabel(self,lbname:_LE,mlb:_MLB)->bool:
-        if lbname == _LE.LANE_CHANGE or lbname == _LE.LANE_MERGE:
-            return self.__checkLCLM(mlb)
+        if lbname == _LE.LANE_CHANGE:
+            return self.__checkLaneChange(mlb)
         elif lbname == _LE.OVERTAKE:
             return self.__checkOvertake(mlb)
         elif lbname == _LE.EMERGENCY_BRAKING:
@@ -290,10 +248,6 @@ class TraciController:
             return self.__checkTurn(mlb)
         elif lbname == _LE.COLLISION:
             return self.__checkCollision(mlb)
-        elif lbname == _LE.OBSTACLE_IN_ROAD:
-            return self.__checkObstacles(mlb)
-        elif lbname == _LE.SLOWDOWN:
-            return self.__checkSlowdown(mlb)
         else:
             raise ValueError(f"Unknown label {lbname}")
         
@@ -305,43 +259,29 @@ class TraciController:
         return flag
 
     
-    def tryAddVInfo(self,vid:str,*,w:float=None,l:float=None,stType:int,pedestrian:bool=False):
+    def tryAddVInfo(self,vid:str,*,w:float=None,l:float=None,stType:int):
         if "VehicleId" in self.vinfo_per_vid_df.columns and not self.vinfo_per_vid_df["VehicleId"].empty and vid in self.vinfo_per_vid_df["VehicleId"].values:
             return False
         else:
-            if pedestrian:
-                if w is not None or l is not None:
-                    raise ValueError("Pedestrian VInfo cannot have width or length.")
-                df = _PI(id=vid,stType=stType).asPandas()
-            else:
-                if w is None or l is None:
-                    raise ValueError("Vehicle VInfo must have width and length.")
-                df = _VI(id=vid,stType=stType,width=w,length=l).asPandas()
+            if w is None or l is None:
+                raise ValueError("Vehicle VInfo must have width and length.")
+            df = _VI(id=vid,stType=stType,width=w,length=l).asPandas()
             self.vinfo_per_vid_df = _pd.concat([self.vinfo_per_vid_df, df], ignore_index=True)
             return True
     
     def computeFrame(self) -> _FR:
         frame = _FR()
-        for pid in _traci.person.getIDList():
-            pos = _traci.person.getPosition(pid)
-            speed = _traci.person.getSpeed(pid)
-            angle = _traci.person.getAngle(pid)
-            vtid = _traci.person.getTypeID(pid)
-            self.tryAddVInfo(pid,stType=getStTypeFromVTypeID(vtid),pedestrian=True)
-            pdata = _VD(id=pid, position=pos, speed=speed, angle=angle)
-            frame.pedestrians.append(pdata)
         for vid in _traci.vehicle.getIDList():
-            if not str(vid).startswith("OBS_"):
-                pos = _traci.vehicle.getPosition(vid)
-                speed = _traci.vehicle.getSpeed(vid)
-                angle = _traci.vehicle.getAngle(vid)
-                vtid = _traci.vehicle.getTypeID(vid)
-                width = _traci.vehicle.getWidth(vid)
-                length = _traci.vehicle.getLength(vid)
-                sttype = getStTypeFromVTypeID(vtid, default=5) # default to car
-                self.tryAddVInfo(vid,w=width,l=length,stType=sttype)
-                vdata = _VD(id=vid, position=pos, speed=speed, angle=angle)
-                frame.vehicles.append(vdata)
+            pos = _traci.vehicle.getPosition(vid)
+            speed = _traci.vehicle.getSpeed(vid)
+            angle = _traci.vehicle.getAngle(vid)
+            vtid = _traci.vehicle.getTypeID(vid)
+            width = _traci.vehicle.getWidth(vid)
+            length = _traci.vehicle.getLength(vid)
+            sttype = getStTypeFromVTypeID(vtid, default=5) # default to car
+            self.tryAddVInfo(vid,w=width,l=length,stType=sttype)
+            vdata = _VD(id=vid, position=pos, speed=speed, angle=angle)
+            frame.vehicles.append(vdata)
         return frame
     
     def run(self,save_dirpath:_Path,progress_queue:_mp.Queue=None):

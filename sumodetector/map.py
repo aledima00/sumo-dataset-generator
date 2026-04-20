@@ -31,48 +31,9 @@ class LaneMergeJunction:
 
 class MapParser:
     net:_Net
-    lm_junctions:list[LaneMergeJunction]
     def __init__(self,netfile_path:str):
         self.net = _sumolib.net.readNet(netfile_path, withInternal=True)
-        self.__computeLMJunctions()
-
-    @staticmethod
-    def __isLaneMergeJunction(node:_Node)->bool:
-        incoming_edges: list[_Edge] = node.getIncoming()
-        outgoing_edges: list[_Edge] = node.getOutgoing()
-
-        # before merge, there should be only one edge incoming with multiple lanes
-        if len(incoming_edges) != 1:
-            return False,None
-        incoming_lanes_num = incoming_edges[0].getLaneNumber()
-        if incoming_lanes_num < 2:
-            return False,None
-        
-        # proper lane merge if all incoming edges have less lanes than incoming edge
-        for oe in outgoing_edges:
-            if oe.getLaneNumber() >= incoming_lanes_num:
-                return False,None
-
-        lmj = LaneMergeJunction(incoming_edge=incoming_edges[0],junction_node=node) 
-        # check that there is a 1:1 mapping from incoming lanes to outgoing lanes
-        ilanes:list[_Lane] = incoming_edges[0].getLanes()
-        for il in ilanes:
-            outgoing_connections:list[_Conn] = il.getOutgoing()
-            if len(outgoing_connections) != 1:
-                return False,None
-            ol: _Lane = outgoing_connections[0].getToLane()
-            lmj.addLaneMapping(il.getID(),ol.getID())
-
-        return True, lmj
     
-    def __computeLMJunctions(self):
-        self.lm_junctions: list[LaneMergeJunction] = []
-        nodes: list[_Node] = self.net.getNodes()
-        for n in nodes:
-            is_lmj, lmj = self.__isLaneMergeJunction(n)
-            if is_lmj:
-                self.lm_junctions.append(lmj)
-
     @staticmethod
     def __getLanesAngle(self,from_lane:_Lane,to_lane:_Lane)->float:
         from_shape = from_lane.getShape()
@@ -113,23 +74,6 @@ class MapParser:
                 min_angle = angle
                 cont_lane = to_lane
         return cont_lane.getID() if cont_lane is not None else None
-
-    def checkIfLcLm(self,from_lane_id:str,to_lane_id:str)->bool:
-
-        from_lane = self.net.getLane(from_lane_id)
-        to_lane = self.net.getLane(to_lane_id)
-        
-        lane_merge_junction = next((lmj for lmj in self.lm_junctions if lmj.matchByIncomingEdgeID(from_lane.getEdge().getID())),None)
-        if lane_merge_junction is None or lane_merge_junction.lanes_id_map is None:
-            return False
-        
-        out_l_from = lane_merge_junction.lanes_id_map.get(from_lane.getID(),None)
-        out_l_to = lane_merge_junction.lanes_id_map.get(to_lane.getID(),None)
-        out_e_from = _traci.lane.getEdgeID(out_l_from) if out_l_from is not None else None
-        out_e_to = _traci.lane.getEdgeID(out_l_to) if out_l_to is not None else None
-
-        # lc is lm if the lc correspond to different outgoing edges after the lane merge junction
-        return out_e_from != out_e_to
     
 
     def asVectorDf(self)->_pd.DataFrame:
