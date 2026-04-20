@@ -6,14 +6,13 @@ from pathlib import Path as _Path
 from .labels import LabelsEnum as _LE, MultiLabel as _MLB
 from .map import MapParser as _MP
 from .sumocfg import SumoCfg as _SCFG
-from .pack import PackSchema as _PKS, pack2pandas as _p2df, Frame as _FR, VehicleData as _VD, VInfo as _VI, PInfo as _PI
+from .pack import Frame as _FR, VehicleData as _VD, VInfo as _VI
 from .tup import TraciUpdater as _TraciUpdater, SimpleTraciUpdater as _SimpleTraciUpdater
 from .packBufferedWriter import PackBufferedWriter as _PBW, OpMode as _OpMode
 
 from colorama import Fore as _Fore, Style as _Style
 import re as _re
 import time as _t
-import numpy as _np
 import pandas as _pd
 import multiprocessing as _mp
 import sys as _sys

@@ -1,4 +1,3 @@
-import sumolib as _sumolib
 from sumolib.net import Net as _Net
 from sumolib.net.edge import Edge as _Edge
 from sumolib.net.lane import Lane as _Lane

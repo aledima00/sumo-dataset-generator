@@ -6,12 +6,10 @@ from sumolib.net.node import Node as _Node
 from sumolib.net.edge import Edge as _Edge
 from sumolib.net.lane import Lane as _Lane
 from sumolib.net.connection import Connection as _Conn
-from enum import Enum as _Enum
 import numpy as _np
 from numpy import linalg as _la
 import pandas as _pd
 
-import traci as _traci
 from .vectorMap import sumoNet2df as _sumoNet2df
 
 
