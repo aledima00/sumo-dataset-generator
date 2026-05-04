@@ -28,7 +28,7 @@ def pmap(netfile_path:Path):
 
     # plot the vmap with matplotlib
     outpath = netfile_path.resolve().parent / "vmap_plot.png"
-    vmap_np = vmap_df[["start_x","start_y","end_x","end_y", "width"]].to_numpy()
+    vmap_np = vmap_df[["StartX","StartY","EndX","EndY", "Width"]].to_numpy()
     cmap = plt.get_cmap("tab20", len(unique_eids))
     colors = [cmap(eid_enc) for eid_enc in vmap_df["eid_enc"]]
     plt.figure(figsize=(10,10))

@@ -12,31 +12,15 @@ class VInfo:
     def asPandas(self) -> _pd.DataFrame:
         return _pd.DataFrame([{
             "VehicleId": self.id,
-            "width": self.width,
-            "length": self.length,
-            "stType": self.stType
+            "Width": self.width,
+            "Length": self.length,
+            "StationType": self.stType
         }]).astype({
             "VehicleId": "string",
-            "width": "float32",
-            "length": "float32",
-            "stType": "uint8"
+            "Width": "float32",
+            "Length": "float32",
+            "StationType": "uint8"
         })
-    
-@_dc
-class PInfo:
-    id: str
-    stType: int
-    
-    def asPandas(self) -> _pd.DataFrame:
-        return _pd.DataFrame([{
-            "VehicleId": self.id,
-            "stType": self.stType
-        }]).astype({
-            "VehicleId": "string",
-            "stType": "uint8"
-        })
-
-
 
 @_dc
 class VehicleData:
@@ -94,4 +78,4 @@ def pack2pandas(id:int, frames:list[Frame]) -> _pd.DataFrame:
     return df
         
     
-__all__ = ['VehicleData', 'Frame','PackSchema', 'pack2pandas', 'VInfo', 'PInfo']
+__all__ = ['VehicleData', 'Frame','PackSchema', 'pack2pandas', 'VInfo']

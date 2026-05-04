@@ -251,7 +251,7 @@ class TraciController:
             return False
         else:
             if w is None or l is None:
-                raise ValueError("Vehicle VInfo must have width and length.")
+                raise ValueError("Vehicle VInfo must have Width and Length.")
             df = _VI(id=vid,stType=stType,width=w,length=l).asPandas()
             self.vinfo_per_vid_df = _pd.concat([self.vinfo_per_vid_df, df], ignore_index=True)
             return True

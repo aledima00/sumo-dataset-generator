@@ -68,23 +68,23 @@ class Lane:
             return None
 
         df = _pd.DataFrame([{
-            "start_x": seg[0][0],
-            "start_y": seg[0][1],
-            "end_x": seg[1][0],
-            "end_y": seg[1][1],
+            "StartX": seg[0][0],
+            "StartY": seg[0][1],
+            "EndX": seg[1][0],
+            "EndY": seg[1][1],
         } for seg in self.polyline_center]).astype({
-            "start_x": "float32",
-            "start_y": "float32",
-            "end_x": "float32",
-            "end_y": "float32",
+            "StartX": "float32",
+            "StartY": "float32",
+            "EndX": "float32",
+            "EndY": "float32",
         })
 
         
-        df["lane_type"] = _pd.Series(self.laneType.value, index=df.index, dtype="uint8")
-        df["speed_limit"] = _pd.Series(self.speed_limit, index=df.index, dtype="float32")
-        df["width"] = _pd.Series(self.width, index=df.index, dtype="float32")
-        df["can_go_left"] = _pd.Series(self.canGoLeft, index=df.index, dtype="bool")
-        df["can_go_right"] = _pd.Series(self.canGoRight, index=df.index, dtype="bool")
+        df["LaneType"] = _pd.Series(self.laneType.value, index=df.index, dtype="uint8")
+        df["SpeedLimit"] = _pd.Series(self.speed_limit, index=df.index, dtype="float32")
+        df["Width"] = _pd.Series(self.width, index=df.index, dtype="float32")
+        df["AllowLeft"] = _pd.Series(self.canGoLeft, index=df.index, dtype="bool")
+        df["AllowRight"] = _pd.Series(self.canGoRight, index=df.index, dtype="bool")
 
         return df
     
