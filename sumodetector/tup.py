@@ -5,6 +5,7 @@ class TraciUpdater(_ABC):
     @_abstractmethod
     def jumpTo(self, sim_time:int):
         pass
+    @_abstractmethod
     def update(self):
         pass
 

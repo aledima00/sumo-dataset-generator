@@ -3,14 +3,12 @@ import pandas as _pd
 
 class LabelsEnum(_IE):
     LANE_CHANGE = 0
-    EMERGENCY_BRAKING = 1
-    OVERTAKE = 2
-    TURN_INTENT = 3
-    COLLISION = 4
+    OVERTAKE = 1
+    TURN_INTENT = 2
+    COLLISION = 3
 
 shorts ={
     LabelsEnum.LANE_CHANGE: "LCH",
-    LabelsEnum.EMERGENCY_BRAKING: "EBK",
     LabelsEnum.OVERTAKE: "OTK",
     LabelsEnum.TURN_INTENT: "TRN",
     LabelsEnum.COLLISION: "COL"

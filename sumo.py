@@ -1,30 +1,14 @@
 import click
 from pathlib import Path
-from typing import get_args, Literal as Lit, TypeAlias as TA
+from typing import get_args
 
 from sumodetector.console import SimulationController as SimCtl
 from sumodetector.labels import LabelsEnum as _LE
-from sumodetector.tup import TraciUpdater
 from sumodetector.tracictl import CollisionAction
 from sumodetector.packBufferedWriter import OpMode
-from SUMOHighD import SumoHighDController as _SHDC
-
-
-class HighDLiveTraciUpdater(TraciUpdater):
-    def __init__(self,i=2):
-        self.__sumo_highd_controller = _SHDC(move_veh=True)
-        self.__sumo_highd_controller.startTrack(i)
-    def jumpTo(self, sim_time):
-        raise ValueError("HighDLiveTraciUpdater does not support jumpTo operation, as the update is tied to real-time.")
-    def update(self):
-        return self.__sumo_highd_controller.step()
         
 
 ACTIVE_LABELS = {_LE.COLLISION}
-
-def get_hdtup_instance(i:int=2):
-    return HighDLiveTraciUpdater(i=i)
-tup_type:TA= Lit['highd-live', 'simple']
 
 @click.command()
 @click.option('--gui','-g', is_flag=True, default=False, help='Run SUMO with GUI')
@@ -38,13 +22,11 @@ tup_type:TA= Lit['highd-live', 'simple']
 @click.option('-M', '--multi-threaded', 'multi_threaded', is_flag=True, default=False, help='Whether to run the simulation in multi-threaded mode (default: False).')
 @click.option('--map-only', is_flag=True, default=False, help='Only extract the vector map without running the full simulation (default: False).')
 @click.option('-S', '--split', is_flag=True, default=False, help='Whether to split the simulation into multiple parts (default: False). Only used in multi-threaded mode.')
-@click.option('--tup', '-T','tup', type=click.Choice(get_args(tup_type)), default='simple', help='Type of TraciUpdater to use (default: simple).')
 @click.option('-O', '--opmode', 'opmode', type=click.Choice(get_args(OpMode)), default='absolute', help='Operation mode for PackBufferedWriter (default: absolute).')
 @click.argument('basepath', type=click.Path(exists=True, dir_okay=True, file_okay=True, path_type=Path), nargs=1)
 def console(gui:bool, no_warnings:bool, enable_emergency_insertions:bool, pack_size:int, on_collision:CollisionAction, basepath:Path,outdir:Path, delay:float, tar_opt:bool, multi_threaded:bool, map_only:bool, split:bool, tup:tup_type, opmode:OpMode):
     simctl = SimCtl(
         active_labels=ACTIVE_LABELS,
-        traci_updater=get_hdtup_instance() if tup=='highd-live' else None,
         gui=gui,
         no_warnings=no_warnings,
         enable_emergency_insertions=enable_emergency_insertions,

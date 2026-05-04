@@ -57,8 +57,6 @@ class TraciController:
     ebk_time_threshold_s:float
 
     # state variables
-    max_speed_per_lane:dict[str,float]
-    baseline_speed_per_lane:dict[str,float]
     th_ebk_per_vt:dict[str,float]
 
     last_step_vstates:dict[str, FrameVState]
@@ -180,20 +178,6 @@ class TraciController:
             lb.setLabel(_LE.COLLISION)
             return True
         return False
-
-    def __checkEmergencyBraking(self,lb:_MLB) ->bool:
-        for vid in _traci.vehicle.getIDList():
-            #vt = _traci.vehicle.getTypeID(vid)
-            acc = _traci.vehicle.getAcceleration(vid)
-
-            if acc < -self.__getVtEbkTh(vid):
-                ls_vstate = self.last_step_vstates.get(vid,None)
-                tot_time = (ls_vstate.ebk_time_s if ls_vstate is not None else 0.0) + self.step_len
-                if tot_time >= self.ebk_time_threshold_s:
-                    self.tlog(f"Emergency Braking detected for vehicle: {vid}")
-                    lb.setLabel(_LE.EMERGENCY_BRAKING)
-                    return True
-        return False
         
 
     def __checkLaneChange(self,lb:_MLB) ->bool:
@@ -241,8 +225,6 @@ class TraciController:
             return self.__checkLaneChange(mlb)
         elif lbname == _LE.OVERTAKE:
             return self.__checkOvertake(mlb)
-        elif lbname == _LE.EMERGENCY_BRAKING:
-            return self.__checkEmergencyBraking(mlb)
         elif lbname == _LE.TURN_INTENT:
             return self.__checkTurn(mlb)
         elif lbname == _LE.COLLISION:
@@ -317,9 +299,6 @@ class TraciController:
         _sys.stdout = tmp
 
         # buffers
-        laneIds = _traci.lane.getIDList()
-        self.max_speed_per_lane = {lid: _traci.lane.getMaxSpeed(lid) for lid in laneIds}
-        self.baseline_speed_per_lane = self.max_speed_per_lane.copy()
         mlb = _MLB()
 
         if self.start_time_s > 0.0:
