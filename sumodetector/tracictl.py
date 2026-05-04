@@ -200,10 +200,16 @@ class TraciController:
             ls_vstate = self.last_step_vstates.get(vid,None)
             old_leader_id = ls_vstate.leader_id if ls_vstate is not None else None
             current_leader_id = self.__getRealEdgeLeader(vid)
-            if old_leader_id is not None and current_leader_id != old_leader_id and (self.__getVehEdge(vid) == self.__getVehEdge(old_leader_id)):
-                lb.setLabel(_LE.OVERTAKE)
-                self.tlog(f"Detected Overtake of Vehicle {vid} on {old_leader_id}")
-                return True
+            if old_leader_id is not None and current_leader_id != old_leader_id:
+                # check same edge now and check edge at previous step
+                oldv_vstate = self.last_step_vstates.get(old_leader_id,None)
+                last_step_vid_edge = _traci.lane.getEdgeID(ls_vstate.lane_id) if ls_vstate.lane_id is not None else None
+                last_step_old_leader_edge = _traci.lane.getEdgeID(oldv_vstate.lane_id) if old_leader_id is not None else None
+
+                if ((self.__getVehEdge(vid) == self.__getVehEdge(old_leader_id)) and (last_step_vid_edge == last_step_old_leader_edge) and last_step_vid_edge is not None):
+                    lb.setLabel(_LE.OVERTAKE)
+                    self.tlog(f"Detected Overtake of Vehicle {vid} on {old_leader_id}")
+                    return True
         return False
                         
     def __checkTurn(self,lb:_MLB) ->bool:
