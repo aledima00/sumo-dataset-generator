@@ -32,7 +32,6 @@ class Generator:
         self.ip_probabs = gparams.IPDict()
         self.vp_probabs = gparams.VPDict()
         self.vcl_probabs = gparams.VCLDict()
-        self.prs_params = gparams.PPDict()
         self.modifiers = gparams.ModDict()
         # print(f"modifiers: {self.modifiers}")
         self.steplen= gparams.steplen
