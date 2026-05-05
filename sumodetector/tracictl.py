@@ -221,7 +221,7 @@ class TraciController:
                 cont_lane_id = self.map_parser.getContToLaneId(from_lane_id=prev_lane_id)
                 if cont_lane_id is None or lane_id != cont_lane_id:
                     # turning detected
-                    lb.setLabel(_LE.TURN_INTENT)
+                    lb.setLabel(_LE.TURN)
                     self.tlog(f"Vehicle {vid} performed turn from lane {prev_lane_id} to {lane_id}.")
                     return True
         return False
@@ -231,7 +231,7 @@ class TraciController:
             return self.__checkLaneChange(mlb)
         elif lbname == _LE.OVERTAKE:
             return self.__checkOvertake(mlb)
-        elif lbname == _LE.TURN_INTENT:
+        elif lbname == _LE.TURN:
             return self.__checkTurn(mlb)
         elif lbname == _LE.COLLISION:
             return self.__checkCollision(mlb)
