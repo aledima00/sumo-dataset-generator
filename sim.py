@@ -8,7 +8,7 @@ from sumodetector.tracictl import CollisionAction
 from sumodetector.packBufferedWriter import OpMode
         
 
-ACTIVE_LABELS = {_LE.COLLISION}
+ACTIVE_LABELS = {_LE.OVERTAKE}
 
 @click.command()
 @click.option('--gui','-g', is_flag=True, default=False, help='Run SUMO with GUI')

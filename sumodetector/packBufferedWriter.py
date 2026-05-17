@@ -53,22 +53,9 @@ class PackBufferedWriter:
                             flist = self.createFlistFromBeginning() # auto popping
                             self.packBuffer.appendPackByFlist(flist)
                 case "sequential":
-                    # same callback as absolute, but without flushing the buffer when trigger received without ready pack, to enable multiple triggering frames in a pack.
+                    # simple append, flush when full: packs are formed one after another, without borrowing frames
                     def appendCallback(triggered:bool):
-                        if triggered:
-                            # we have to borrow frames to make a pack with triggered frame as last
-                            # if ready we send to PackBufferedWriter, otherwise we flush
-                            if self.isReadyPack():
-                                flist = self.popFlistFromEnd()
-                                self.packBuffer.appendPackByFlist(flist)
-
-                                # check if still remains one complete (case of exactly 2 packs buffered with a triggered frame as last)
-                                if self.isReadyPack():
-                                    flist = self.popFlistFromBeginning()
-                                    self.packBuffer.appendPackByFlist(flist)
-                                # flush all frames, if any remains
-                                self.frames_buf.clear()
-                        elif self.isFull():
+                        if self.isReadyPack():
                             flist = self.popFlistFromBeginning()
                             self.packBuffer.appendPackByFlist(flist)
                 case _:
