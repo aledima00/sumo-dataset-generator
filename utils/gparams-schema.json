@@ -102,7 +102,7 @@
     "type": "object",
     "properties": {
         "time": {"type": "integer", "minimum": 1, "description": "Total simulation time in seconds."},
-        "split": {"type": "boolean", "description": "Whether to split the total time across multiple independent simulations (true) or to run a single simulation jumping at different points (false)."},
+        "split": {"type": "integer", "minimum": 1, "description": "Whether to split the total time across multiple independent simulations (>1) or to run a single simulation jumping at different points (1)."},
         "steplen": {"type": "number", "minimum": 0.001, "description": "Simulation step length in seconds."},
         "minrtlen": {"type": "number", "minimum": 1, "description": "Minimum vehicles route steps."},
         "maxrtlen": {"type": "number", "minimum": 1, "description": "Maximum vehicles route steps."},

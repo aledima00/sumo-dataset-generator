@@ -21,12 +21,12 @@ def generate(yfname:_Path):
         options.normalizeNullish()
         _clk.echo(f"{_Fore.CYAN}[generation parameters loaded from './{yf.name}']{_Style.RESET_ALL}")
 
-        if options.split:
-            nprocs = _mp.cpu_count() // 2
+        if options.split>1:
+            nprocs = options.split if (options.split > 0 and options.split <= _mp.cpu_count()) else 1
             opts = options.copy(divide_by=nprocs)
             for i in range(nprocs):
                 sdir = sumodir / f"part{i}"
-                scfg = _SCFG(sdir/ f"cfg.sumocfg", split=True)
+                scfg = _SCFG(sdir/ f"cfg.sumocfg", split=options.split)
                 scfg.overwrite(
                     time=opts.time,
                     step_len=opts.steplen

@@ -112,7 +112,7 @@ class VehicleDrawMethod:
 @_dc
 class GenOptions:
     time: int = None
-    split: bool = False
+    split: int = 1
     steplen: float = None
     nroutes: int = None
     minrtlen: int = DEF_MIN_RTLEN

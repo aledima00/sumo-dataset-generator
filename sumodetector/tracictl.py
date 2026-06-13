@@ -186,13 +186,13 @@ class TraciController:
             ls_vstate = self.last_step_vstates.get(vid,None)
             prev_lane_id = ls_vstate.lane_id if ls_vstate is not None else None
             if prev_lane_id is not None and lane_id != prev_lane_id:
-                if not self.map_parser.isLaneSpecial(prev_lane_id) and not self.map_parser.isLaneSpecial(lane_id):
-                    e1id = _traci.lane.getEdgeID(prev_lane_id)
-                    e2id = _traci.lane.getEdgeID(lane_id)
-                    if e1id == e2id:
-                        self.tlog(f"Vehicle {vid} changed lane from {prev_lane_id} to {lane_id} ({e1id} -> {e2id}).")
-                        lb.setLabel(_LE.LANE_CHANGE)
-                        return True
+                e1id = _traci.lane.getEdgeID(prev_lane_id)
+                e2id = _traci.lane.getEdgeID(lane_id)
+                if e1id == e2id:
+                    # generic lane change situation (only targeting lcs on same edge) (includes lane merges)
+                    self.tlog(f"Vehicle {vid} changed lane from {prev_lane_id} to {lane_id} on edge {e1id}.")
+                    lb.setLabel(_LE.LANE_CHANGE)
+                    return True
         return False
                     
     def __checkOvertake(self,lb:_MLB) ->bool:
