@@ -79,12 +79,12 @@ class VehicleDrawMethod:
             case _:
                 raise ValueError(f"Unknown VehicleDrawMethod onBorders: {self.onBorders}")
     
-    def getSigmaScalingFactor(self,idx:int,total:int)->float:
+    def getSigmaScalingFactor(self,mean:float,tot:float)->float:
         match self.sigmaScaling:
             case "Triangular":
-                return 1 - abs(2*idx/total - 1)
+                return 1 - abs(2*mean/tot - 1)
             case "Quadratic":
-                return (1 - abs(2*idx/total - 1))**2
+                return 1 - (2*mean/tot - 1)**2
             case _:
                 return 1.0
 
@@ -97,8 +97,8 @@ class VehicleDrawMethod:
                 dpts = [self.correctBounds(abs(_RND.gauss(0, sigma)), 0.0, tot_sim_time) for _ in range(vnum)]
             case "TimeMovingGaussian":
                 sigma = tot_sim_time * self.tdevprop
-                mean_interval = tot_sim_time / vnum
-                dpts = [self.correctBounds(_RND.gauss(i * mean_interval, sigma * self.getSigmaScalingFactor(i,vnum)), 0.0, tot_sim_time) for i in range(vnum)]
+                spacing = tot_sim_time / (vnum + 1)
+                dpts = [self.correctBounds(_RND.gauss((i + 1) * spacing, sigma * self.getSigmaScalingFactor((i + 1) * spacing, tot_sim_time)), 0.0, tot_sim_time) for i in range(vnum)]
             case _:
                 raise ValueError(f"Unknown VehicleDrawMethod name: {self.name}")
         
