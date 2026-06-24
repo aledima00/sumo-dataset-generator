@@ -1,7 +1,7 @@
 from pathlib import Path as _Path
 from typing import Literal as _Lit, TypeAlias as _TA
 
-from .labels import MultiLabel as _MLB
+from .labels import MultiLabel as _BML
 from .pack import PackSchema as _PKS, pack2pandas as _p2df, Frame as _FR
 
 
@@ -16,8 +16,8 @@ from typing import TypeAlias as _TA
 OpMode: _TA = _Lit["dense", "sequential", "absolute"]
 
 class PackBufferedWriter:
-    FramesListType: _TA = list[tuple[_FR,_MLB]]
-    FramesDequeType: _TA = _dq[tuple[_FR,_MLB]]
+    FramesListType: _TA = list[tuple[_FR,_BML]]
+    FramesDequeType: _TA = _dq[tuple[_FR,_BML]]
     opmode: OpMode
     class FramesBuffer:
         """
@@ -99,8 +99,8 @@ class PackBufferedWriter:
             frameslist = list(self.frames_buf)[:self.frames_per_pack]
             return frameslist
         
-        def appendFrame(self, frame:_FR, mlb:_MLB, triggered:bool):
-            self.frames_buf.append((frame, mlb))
+        def appendFrame(self, frame:_FR, bml:_BML, triggered:bool):
+            self.frames_buf.append((frame, bml))
             self.appendFrameCallback(triggered)
                 
     def __init__(self,save_dirpath:_Path,num_packs_buffered:int, frames_per_pack:int,*, startPackId:int=1, opmode:OpMode="absolute"):
@@ -121,31 +121,31 @@ class PackBufferedWriter:
 
         match self.opmode:
             case "absolute":
-                def computeMlbCallback(mlblist):
-                    mlb = _MLB.mergeList(mlblist)
-                    return mlb
+                def computeBmlCallback(bmllist):
+                    bml = _BML.mergeList(bmllist)
+                    return bml
             case "dense":
-                def computeMlbCallback(mlblist):
-                    mlb = mlblist[-1] if len(mlblist) > 0 else _MLB()
-                    return mlb
+                def computeBmlCallback(bmllist):
+                    bml = bmllist[-1] if len(bmllist) > 0 else _BML()
+                    return bml
             case "sequential":
-                def computeMlbCallback(mlblist):
-                    mlb = mlblist[-1] if len(mlblist) > 0 else _MLB()
-                    return mlb
+                def computeBmlCallback(bmllist):
+                    bml = bmllist[-1] if len(bmllist) > 0 else _BML()
+                    return bml
             case _:
                 raise ValueError(f"Unknown operation mode: {self.opmode}")
-        self.computeMlbCallback = computeMlbCallback
+        self.computeBmlCallback = computeBmlCallback
 
     def appendPackByFlist(self,framesList:FramesListType):
         """ Append a pack to the buffer by a list of frames and their corresponding multi-labels. """
         newpid = self.last_pack_id+1
-        dataList, mlbList = zip(*framesList)
+        dataList, bmlList = zip(*framesList)
 
         p = _p2df(newpid, dataList)
         if p is not None:
-            mlb = self.computeMlbCallback(mlbList)
+            bml = self.computeBmlCallback(bmlList)
             self.__appendPack(p)
-            self.__appendMlb(mlb, newpid)
+            self.__appendBml(bml, newpid)
             self.last_pack_id = newpid
 
     def __appendPack(self, packdf:_pd.DataFrame):
@@ -156,9 +156,9 @@ class PackBufferedWriter:
         else:
             self.cnt += 1
 
-    def __appendMlb(self,mlb:_MLB,pid:int):
-        """ Append a mlb to the labels buffer, and flush to disk if buffer is full. """
-        self.labels_per_pid_df = _pd.concat([self.labels_per_pid_df, mlb.asPandas(pid)], ignore_index=True)
+    def __appendBml(self,bml:_BML,pid:int):
+        """ Append a bml to the labels buffer, and flush to disk if buffer is full. """
+        self.labels_per_pid_df = _pd.concat([self.labels_per_pid_df, bml.asPandas(pid)], ignore_index=True)
 
 
     def flushToDisk(self):
@@ -167,8 +167,8 @@ class PackBufferedWriter:
         self.packs_df = _pd.DataFrame()
         self.cnt = 0
 
-    def appendFrame(self, frame:_FR, mlb:_MLB, triggered:bool):
-        self.frames_buffer.appendFrame(frame, mlb, triggered)
+    def appendFrame(self, frame:_FR, bml:_BML, triggered:bool):
+        self.frames_buffer.appendFrame(frame, bml, triggered)
 
     def len(self):
         return self.cnt

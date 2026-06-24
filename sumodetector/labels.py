@@ -40,10 +40,10 @@ class MultiLabel:
     def asPandas(self, packID:int) -> _pd.DataFrame:
         return _pd.DataFrame([{
             "PackId": packID,
-            "MLBEncoded": self.getEncoded()
+            "BMLEncoded": self.getEncoded()
         }]).astype({
             "PackId": "uint32",
-            "MLBEncoded" : "uint16"
+            "BMLEncoded" : "uint16"
         })
     def clear(self):
         self.__encoded_labels = 0

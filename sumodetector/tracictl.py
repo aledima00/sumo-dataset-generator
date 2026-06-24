@@ -3,7 +3,7 @@ import sumolib as _sumolib
 import traci as _traci
 from typing import Literal as _Lit
 from pathlib import Path as _Path
-from .labels import LabelsEnum as _LE, MultiLabel as _MLB
+from .labels import LabelsEnum as _LE, MultiLabel as _BML
 from .map import MapParser as _MP
 from .sumocfg import SumoCfg as _SCFG
 from .pack import Frame as _FR, VehicleData as _VD, VInfo as _VI
@@ -171,16 +171,16 @@ class TraciController:
                 ebk_time_s=ebktime
             )
 
-    def __checkCollision(self,lb:_MLB) ->bool:
+    def __checkCollision(self,bml:_BML) ->bool:
         clist = _traci.simulation.getCollidingVehiclesIDList()
         if len(clist)>0:
             self.tlog(f"Collision detected among vehicles: {clist}")
-            lb.setLabel(_LE.COLLISION)
+            bml.setLabel(_LE.COLLISION)
             return True
         return False
         
 
-    def __checkLaneChange(self,lb:_MLB) ->bool:
+    def __checkLaneChange(self,bml:_BML) ->bool:
         for vid in _traci.vehicle.getIDList():
             lane_id = _traci.vehicle.getLaneID(vid)
             ls_vstate = self.last_step_vstates.get(vid,None)
@@ -191,11 +191,11 @@ class TraciController:
                 if e1id == e2id:
                     # generic lane change situation (only targeting lcs on same edge) (includes lane merges)
                     self.tlog(f"Vehicle {vid} changed lane from {prev_lane_id} to {lane_id} on edge {e1id}.")
-                    lb.setLabel(_LE.LANE_CHANGE)
+                    bml.setLabel(_LE.LANE_CHANGE)
                     return True
         return False
                     
-    def __checkOvertake(self,lb:_MLB) ->bool:
+    def __checkOvertake(self,bml:_BML) ->bool:
         for vid in _traci.vehicle.getIDList():
             ls_vstate = self.last_step_vstates.get(vid,None)
             old_leader_id = ls_vstate.leader_id if ls_vstate is not None else None
@@ -207,12 +207,12 @@ class TraciController:
                 last_step_old_leader_edge = _traci.lane.getEdgeID(oldv_vstate.lane_id) if old_leader_id is not None else None
 
                 if ((self.__getVehEdge(vid) == self.__getVehEdge(old_leader_id)) and (last_step_vid_edge == last_step_old_leader_edge) and last_step_vid_edge is not None):
-                    lb.setLabel(_LE.OVERTAKE)
+                    bml.setLabel(_LE.OVERTAKE)
                     self.tlog(f"Detected Overtake of Vehicle {vid} on {old_leader_id}")
                     return True
         return False
                         
-    def __checkTurn(self,lb:_MLB) ->bool:
+    def __checkTurn(self,bml:_BML) ->bool:
         for vid in _traci.vehicle.getIDList():
             lane_id = _traci.vehicle.getLaneID(vid)
             ls_vstate = self.last_step_vstates.get(vid,None)
@@ -221,28 +221,28 @@ class TraciController:
                 cont_lane_id = self.map_parser.getContToLaneId(from_lane_id=prev_lane_id)
                 if cont_lane_id is None or lane_id != cont_lane_id:
                     # turning detected
-                    lb.setLabel(_LE.TURN)
+                    bml.setLabel(_LE.TURN)
                     self.tlog(f"Vehicle {vid} performed turn from lane {prev_lane_id} to {lane_id}.")
                     return True
         return False
                     
-    def __checkFrameByLabel(self,lbname:_LE,mlb:_MLB)->bool:
+    def __checkFrameByLabel(self,lbname:_LE,bml:_BML)->bool:
         if lbname == _LE.LANE_CHANGE:
-            return self.__checkLaneChange(mlb)
+            return self.__checkLaneChange(bml)
         elif lbname == _LE.OVERTAKE:
-            return self.__checkOvertake(mlb)
+            return self.__checkOvertake(bml)
         elif lbname == _LE.TURN:
-            return self.__checkTurn(mlb)
+            return self.__checkTurn(bml)
         elif lbname == _LE.COLLISION:
-            return self.__checkCollision(mlb)
+            return self.__checkCollision(bml)
         else:
             raise ValueError(f"Unknown label {lbname}")
         
-    def __checkFrame(self,mlb:_MLB) ->bool:
+    def __checkFrame(self,bml:_BML) ->bool:
         # trigger: at least one label detected
         flag = False
         for label in self.active_labels:
-            flag |= self.__checkFrameByLabel(label, mlb)
+            flag |= self.__checkFrameByLabel(label, bml)
         return flag
 
     
@@ -305,7 +305,7 @@ class TraciController:
         _sys.stdout = tmp
 
         # buffers
-        mlb = _MLB()
+        bml = _BML()
 
         if self.start_time_s > 0.0:
             self.tlog(f"Skipping to start time {self.start_time_s}s...")
@@ -315,13 +315,13 @@ class TraciController:
 
         # -------------------------- main simulation loop --------------------------
         for fnum in range(self.total_frames):
-            mlb.clear()
+            bml.clear()
             #FIXME: double update call???
             self.traci_updater.update()
-            triggered = self.__checkFrame(mlb)
+            triggered = self.__checkFrame(bml)
 
             frameData = self.computeFrame() #TODO:CHECK slowing point
-            pbw.appendFrame(frameData, mlb, triggered)
+            pbw.appendFrame(frameData, bml, triggered)
 
             # end of frame analysis: update and wait for next
             self.__updateState()

@@ -23,7 +23,7 @@ def analyze_labels(parquet_path: Path):
         mask = 1 << label.value
         
         # Count how many rows have this bit set
-        count = (df['MLBEncoded'] & mask).astype(bool).sum()
+        count = (df['BMLEncoded'] & mask).astype(bool).sum()
         ratio = count / total_rows if total_rows > 0 else None
                 
         if ratio is not None:
