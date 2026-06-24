@@ -85,8 +85,9 @@ The two approaches are equivalent: `uv run` transparently resolves the project e
 │   └── README.md               # Detailed genrouter documentation
 ├── sumodetector/               # Module for frame extraction and labeling
 │   └── README.md               # Detailed sumodetector documentation
-├── utils/                      # Utilities and gparams schema
+├── utils/                      # gparams schema
 ├── pyproject.toml              # Project configuration and dependencies
+├── LICENSE                     # GPLv2
 └── README.md                   # This file
 ```
 
@@ -343,6 +344,10 @@ The `--opmode` parameter controls how packs are built when an event is detected:
 - The `--map-only` option is useful to verify the network before launching a full simulation.
 
 ---
+
+## License
+
+This project is distributed under the [GNU General Public License v2](LICENSE).
 
 ## Links
 

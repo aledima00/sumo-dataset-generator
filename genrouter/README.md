@@ -7,13 +7,15 @@
 ## Entry point
 
 ```bash
-uv run gen.py <scenario_path>
+uv run gen.py <yfname>
 ```
 
-`scenario_path` can be:
+`yfname` can be:
 
 - a directory containing `gparams.yaml` and `cfg.sumocfg`
 - a path to a `gparams.yaml` file directly
+
+`gen.py` defines a Click command that builds a `GenerationController` (from `genrouter.controller`) and runs it. At the end it prints a summary (network file, simulation time, step length, number of routes and vehicles).
 
 The command:
 
