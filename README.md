@@ -56,7 +56,7 @@ pip install -e .
 If you installed the project with **uv**, run the scripts directly using `uv run`. This command automatically uses the project-managed virtual environment without requiring manual activation:
 
 ```bash
-uv run gen.py <scenario_path>
+uv run gen.py <yfname|scenario_path>
 uv run sim.py -L <label> --outdir <output_dir> <scenario_path>
 uv run lbstats.py <labels.parquet>
 ```
@@ -102,7 +102,7 @@ For in-depth documentation on modules, classes, CLI options, and configuration p
 
 The workflow is divided into two main phases:
 
-1. **Scenario preparation**: create a scenario folder containing the SUMO network (`map.net.xml`), the configuration file (`cfg.sumocfg`), and the generation parameters file (`gparams.yaml`).
+1. **Scenario preparation**: create a scenario folder containing the SUMO network (`map.net.xml`) and the generation parameters file (`gparams.yaml`).
 2. **Dataset generation**: generate routes/vehicles and run the simulation to extract frame packs and their corresponding labels.
 
 ---
@@ -116,31 +116,7 @@ A minimal scenario requires:
 ```text
 scenario/
 ├── map.net.xml        # SUMO road network
-├── cfg.sumocfg        # Simulation configuration
 └── gparams.yaml       # Vehicle and route generation parameters
-```
-
-The `cfg.sumocfg` file must specify at least:
-
-- `input/net-file`: relative path to the network (`map.net.xml`)
-- `input/route-files`: relative path to the routes file (e.g., `routes.rou.xml`, will be generated)
-- `time/begin` and `time/end`: simulation duration
-- `time/step-length`: simulation step length in seconds
-
-Example:
-
-```xml
-<configuration>
-  <input>
-    <net-file value="map.net.xml"/>
-    <route-files value="routes.rou.xml"/>
-  </input>
-  <time>
-    <begin value="0"/>
-    <end value="3600"/>
-    <step-length value="0.1"/>
-  </time>
-</configuration>
 ```
 
 The `gparams.yaml` file controls route and vehicle generation. For the full field documentation, see `utils/gparams-schema.json`. Main parameters:
@@ -193,16 +169,15 @@ VehicleParams:
 ### 2. Generate routes and vehicles
 
 ```bash
-uv run gen.py <scenario_path>
+uv run gen.py <yfname|scenario_path>
 ```
 
 This command:
 
-- reads `gparams.yaml`
-- overwrites `cfg.sumocfg` with time and step parameters
-- generates the `routes.rou.xml` file with routes and vehicles
+- reads `gparams.yaml`. If `<scenario_path>` is a directory, it automatically looks for `gparams.yaml` inside it, otherwise it expects a `.yaml` file to be used directly.
+- writes `cfg.sumocfg` with time and step parameters; if a file with that name is already present, only interested fields of it are overwritten, so that other eventual customization are not touched at all.
+- generates the `routes.rou.xml` file with routes and vehicles;
 
-If `<scenario_path>` is a directory, it automatically looks for `gparams.yaml` and `cfg.sumocfg` inside it. If it is a `.yaml` file, it uses it directly.
 
 ---
 
@@ -237,7 +212,7 @@ Main options:
 | `-S`, `--split` | Use `partN/` subfolders generated with `split > 1` |
 | `--map-only` | Extract only the vector map (`vmap.parquet`) and exit |
 | `--tar` | Create a `.tar` archive of the output folder |
-| `-O`, `--opmode` | Pack building mode: `absolute`, `balanced`, `dense`, `sequential` (default: `absolute`) |
+| `-O`, `--opmode` | Pack building mode: `absolute`, `dense`, `sequential` (default: `absolute`) |
 
 Example:
 
@@ -282,7 +257,6 @@ examples/
 ├── lane_change/
 │   ├── train/
 │   │   ├── map.net.xml
-│   │   ├── cfg.sumocfg
 │   │   └── gparams.yaml
 │   ├── test/
 │   └── eval/
@@ -331,7 +305,6 @@ Prints the total number of samples and the frequency of each label.
 The `--opmode` parameter controls how packs are built when an event is detected:
 
 - `absolute`: every trigger consumes/resets the current buffer, ensuring a labeled pack with the trigger frame as the last element.
-- `balanced`: similar to `absolute`, but keeps one ready pack in the buffer.
 - `dense`: each pack contains consecutive frames without flushing the buffer.
 - `sequential`: packs are formed sequentially, one after another.
 
@@ -340,7 +313,7 @@ The `--opmode` parameter controls how packs are built when an event is detected:
 ## Notes
 
 - For long simulations or many vehicles, increase `-T` to parallelize extraction.
-- When using `split > 1` in `gparams.yaml`, `gen.py` automatically creates `partN/` subfolders with balanced configurations and routes. Use the `-S` option during simulation.
+- When using `split > 1` in `gparams.yaml`, `gen.py` automatically creates `partN/` subfolders with balanced configurations and routes: then, to maintain consistency, users are expected to run `sim.py` with the `-S` flag and with a number of workers equal to the number of splits, provided with `-T <num>` otpion;
 - The `--map-only` option is useful to verify the network before launching a full simulation.
 
 ---

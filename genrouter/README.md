@@ -20,7 +20,7 @@ uv run gen.py <yfname>
 The command:
 
 - reads `gparams.yaml`
-- updates `cfg.sumocfg` with `time` and `step_len`
+- writes `cfg.sumocfg` (or updates if already present) with `time` and `step_len` as provided
 - generates `routes.rou.xml` in the same folder as `cfg.sumocfg`
 
 If `split > 1` is set in `gparams.yaml`, the command creates `part0/`, `part1/`, ... subfolders, each with its own config and route file, splitting vehicles and simulation time evenly.
@@ -42,7 +42,7 @@ For the JSON schema, see `utils/gparams-schema.json`.
 | `minrtlen` | Minimum route length [edges]. |
 | `maxrtlen` | Maximum route length [edges]. |
 | `vnum` | Number of vehicles to generate. |
-| `source_edges` | Optional list of starting edge IDs. If empty, routes start from edges with no incoming connections. |
+| `source_edges` | Optional list of starting edge IDs. If empty, routes start from fringe edges. |
 | `vDrawMethod` | How vehicle departure times are sampled. |
 | `ClassParams` | Distribution of SUMO vehicle classes (e.g., `passenger`, `truck`). |
 | `IndividualParams` | Distribution of driver behavior parameter sets. |
