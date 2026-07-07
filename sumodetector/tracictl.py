@@ -25,7 +25,6 @@ class FrameVState:
     lane_id: str
     lane_id_no_junc_intlane: str|None = None
     leader_id: str|None = None
-    ebk_time_s: float = 0.0
     
 
 CollisionAction = _Lit["teleport", "warn", "none", "remove"]
@@ -53,11 +52,7 @@ class TraciController:
     delay:float
     total_frames:int
 
-    # thresholds
-    ebk_time_threshold_s:float
-
     # state variables
-    th_ebk_per_vt:dict[str,float]
 
     last_step_vstates:dict[str, FrameVState]
 
@@ -86,11 +81,6 @@ class TraciController:
 
         self.map_parser = _MP(str(self.cfg.net_file))
 
-        # TODO:CHECK these values
-        self.th_ebk_per_vt = dict()
-        self.ebk_prop_threshold = 0.50
-        self.ebk_time_threshold_s = 0.05 #TODO:CHECK if it's ok to use time-based threshold for this
-
         # last step vstates
         self.last_step_vstates = dict()
 
@@ -112,14 +102,6 @@ class TraciController:
         if self.__tlog_enabled:
             self.print(f"{_Fore.MAGENTA}[{_traci.simulation.getTime()}] {val}{_Style.RESET_ALL}")
 
-
-    def __getVtEbkTh(self, vtid:str)->float:
-        if vtid not in self.th_ebk_per_vt:
-            v_decel = _traci.vehicle.getDecel(vtid)
-            v_em_decel = _traci.vehicle.getEmergencyDecel(vtid)
-            threshold_decel = v_decel + (v_em_decel - v_decel) * self.ebk_prop_threshold
-            self.th_ebk_per_vt[vtid] = threshold_decel
-        return self.th_ebk_per_vt[vtid]
     
     @staticmethod
     def __getVehEdge(vid:str)->str|None:
@@ -156,19 +138,11 @@ class TraciController:
             leader_id = self.__getRealEdgeLeader(vid)
             nojint_lane_id = lane_id if not self.map_parser.isLaneSpecial(lane_id) else None
 
-            # ebk times
-            #vt = _traci.vehicle.getTypeID(vid) # TODO:CHECK if needed
-            acc = _traci.vehicle.getAcceleration(vid)
-            ebktime = 0.0
-            if acc < -self.__getVtEbkTh(vid):
-                current = self.last_step_vstates.get(vid,None)
-                ebktime = (current.ebk_time_s if current is not None else 0.0) + self.step_len
 
             self.last_step_vstates[vid] = FrameVState(
                 lane_id=lane_id,
                 lane_id_no_junc_intlane=nojint_lane_id,
                 leader_id=leader_id,
-                ebk_time_s=ebktime
             )
 
     def __checkCollision(self,lb:_MLB) ->bool:
@@ -316,11 +290,10 @@ class TraciController:
         # -------------------------- main simulation loop --------------------------
         for fnum in range(self.total_frames):
             mlb.clear()
-            #FIXME: double update call???
             self.traci_updater.update()
             triggered = self.__checkFrame(mlb)
 
-            frameData = self.computeFrame() #TODO:CHECK slowing point
+            frameData = self.computeFrame()
             pbw.appendFrame(frameData, mlb, triggered)
 
             # end of frame analysis: update and wait for next

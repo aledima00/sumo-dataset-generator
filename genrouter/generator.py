@@ -98,7 +98,6 @@ class Generator:
                         reactionTimeDev = mods.get("reactionTimeDev",None)
                         if reactionTimeAvg is not None and reactionTimeDev is not None:
                             reactionTime = max(self.steplen,_RND.gauss(reactionTimeAvg,reactionTimeDev))
-                            #TODO:CHECK if it is better to directly provide the new value instead of a multiplier
                             nvt.ip.setActionStepLength(reactionTime)
                     case "UNEXPECTED_DECEL":
                         decelPropAvg = mods.get("decelPropAvg",None)
