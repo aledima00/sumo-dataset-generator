@@ -1,0 +1,31 @@
+---
+# yaml-language-server: $schema=https://raw.githubusercontent.com/aledima00/sumo-dataset-generator/refs/heads/master/utils/gparams-schema.json
+time: 180000
+split: 64
+steplen: 0.1
+minrtlen: 6
+maxrtlen: 8
+vnum: 216000
+vDrawMethod:
+  name: TimeMovingGaussian
+  tdevprop: 0.00001
+  onBorders: Redistribute
+  sigmaScaling: Triangular
+ClassParams:
+- { p: 0.995, name: PASSENGER, vClass: passenger }
+- { p: 0.003, name: EMERGENCY, vClass: emergency }
+- { p: 0.002, name: AUTHORITY, vClass: authority }
+IndividualParams:
+- { p: 0.1, name: CAUTIOUS,   minGap: 2.5, speedFactor: 0.8, speedDev: 0.05, lcGreediness: 0.5, lcAggressiveness: 0.25, jcAggressiveness: 0.25 }
+- { p: 0.2, name: NORMAL,     minGap: 2.0, speedFactor: 1.0, speedDev: 0.10, lcGreediness: 0.5, lcAggressiveness: 0.50, jcAggressiveness: 0.50 }
+- { p: 0.5, name: AGGRESSIVE, minGap: 1.5, speedFactor: 1.4, speedDev: 0.15, lcGreediness: 0.5, lcAggressiveness: 0.75, jcAggressiveness: 0.75 }
+Modifiers:
+- { name: DISTRACTED_DRIVER, p: 0.6, reactionTimeAvg: 1.0, reactionTimeDev: 0.2 }
+- { name: UNEXPECTED_DECEL, p: 0.6, decelPropAvg: 0.3, decelPropDev: 0.02}
+VehicleParams:
+- { p: 03.75, stType: 3, name: MPED, accel: 1.5, decel: 3.0, emergency_decel: 05.5, length_m: 01.8, width_m: 0.7, max_speed: 060.0, gui_shape: moped       }
+- { p: 10.82, stType: 4, name: MCYC, accel: 2.8, decel: 3.5, emergency_decel: 07.5, length_m: 02.2, width_m: 0.8, max_speed: 160.0, gui_shape: motorcycle  }
+- { p: 64.50, stType: 5, name: PCAR, accel: 2.6, decel: 4.5, emergency_decel: 08.5, length_m: 04.5, width_m: 1.8, max_speed: 180.0, gui_shape: passenger   }
+- { p: 01.43, stType: 6, name: BUSS, accel: 1.3, decel: 3.0, emergency_decel: 06.0, length_m: 12.0, width_m: 2.5, max_speed: 100.0, gui_shape: bus         }
+- { p: 13.06, stType: 7, name: LTRK, accel: 1.6, decel: 3.5, emergency_decel: 06.5, length_m: 06.5, width_m: 2.2, max_speed: 130.0, gui_shape: delivery    }
+- { p: 04.10, stType: 8, name: HTRK, accel: 1.0, decel: 2.8, emergency_decel: 05.5, length_m: 12.0, width_m: 2.5, max_speed: 100.0, gui_shape: truck       }
