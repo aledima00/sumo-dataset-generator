@@ -183,6 +183,19 @@ class SimulationController:
         self.map_only = map_only
         self.split = split
         self.pbw_opmode = pbw_opmode
+
+        if self.gui and self.threads > 1:
+            raise ValueError("--gui can only be used in single-threaded mode (threads=1).")
+
+        if self.split and self.threads <= 1:
+            raise ValueError("--split requires threads > 1.")
+
+        if self.split:
+            base = self.basepath.resolve() if self.basepath.is_dir() else self.basepath.parent.resolve()
+            found = sum(1 for d in base.glob("part*") if d.is_dir() and d.name.startswith("part") and d.name[4:].isdigit())
+            if found < self.threads:
+                raise ValueError(f"--split requires {self.threads} 'part{{i}}' subdirectories to be defined in {base}, found only {found}.")
+
     def run(self):
         print(f"active labels: {self.active_labels}")
         nprocs = self.threads if (self.threads > 0 and self.threads <= _mp.cpu_count()) else 1

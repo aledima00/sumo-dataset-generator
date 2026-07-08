@@ -25,6 +25,12 @@ from sumodetector.packBufferedWriter import OpMode
 @click.option('-O', '--opmode', 'opmode', type=click.Choice(get_args(OpMode)), default='absolute', help='Operation mode for PackBufferedWriter (default: absolute).')
 @click.argument('basepath', type=click.Path(exists=True, dir_okay=True, file_okay=True, path_type=Path), nargs=1)
 def console(label:int, gui:bool, no_warnings:bool, enable_emergency_insertions:bool, pack_size:int, on_collision:CollisionAction, basepath:Path,outdir:Path, delay:float, tar_opt:bool, threads:int, map_only:bool, split:bool, opmode:OpMode):
+    if gui and threads > 1:
+        raise click.UsageError("--gui can only be used in single-threaded mode (threads=1).")
+
+    if split and threads <= 1:
+        raise click.UsageError("--split requires threads > 1.")
+
     simctl = SimCtl(
         active_labels={label},
         gui=gui,
