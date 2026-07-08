@@ -116,7 +116,7 @@ The workflow is divided in two main phases:
 1. **scenario preparation**: create a scenario folder with `map.net.xml` and `gparams.yaml` and use that to generate the simulation config files via the `gen.py` script;
 2. **dataset generation**: run `sim.py` after the config is ready to run the simulation and analyze it to produce the dataset;
 
-Some examples of `map.net.xml` and `gparams.yaml` for **scenario preparation** have been included in the [`examples/`](https://github.com/aledima00/sumo-dataset-generator/tree/master/examples) directory, specifically providing them for the train split of the 4 labels considered:
+Some examples of `map.net.xml` and `gparams.yaml` for **scenario preparation** have been included in the [`examples/`](./examples/) directory, specifically providing them for the train split of the 4 labels considered:
 
 ```
 examples/
