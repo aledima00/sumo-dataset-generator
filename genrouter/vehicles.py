@@ -27,7 +27,8 @@ class IParams:
         self.setJcAggressiveness(jcAggressiveness)
 
     def setLcAggressiveness(self,lc_aggressiveness):
-        assert 0.0 <= lc_aggressiveness <= 1.0, "lc_aggressiveness must be in [0-1]"
+        if not 0.0 <= lc_aggressiveness <= 1.0:
+            raise ValueError("lc_aggressiveness must be in [0-1]")
         self.__lc_aggressiveness = lc_aggressiveness
 
         self.lcAggressivenessDict["lcCooperative"] = _mf.neglin_01_scaled(lc_aggressiveness) # how much to perform lc in a cooperative manner
@@ -37,7 +38,8 @@ class IParams:
         self.lcAggressivenessDict["lcAssertive"] = _mf.inv_01_0inf(lc_aggressiveness,strength=3.0) # willingness [0-inf) to acccept smaller gaps when changing lane
 
     def setLcGreediness(self,lc_greediness:float=1.0):
-        assert 0.0 <= lc_greediness <= 1.0, "lc_greediness must be in [0-1]"
+        if not 0.0 <= lc_greediness <= 1.0:
+            raise ValueError("lc_greediness must be in [0-1]")
         self.__lc_greediness = lc_greediness
 
         self.lcGreedinessDict["lcStrategic"] = _mf.inv_01_0inf(lc_greediness,strength=5.0) # how much to exploit lc to reach destinations
@@ -50,7 +52,8 @@ class IParams:
 
     # junction parameters - keep default for majority of cases
     def setJcAggressiveness(self,jc_aggressiveness:float=0.0):
-        assert 0.0 <= jc_aggressiveness <= 1.0, "jc_aggressiveness must be in [0-1]"
+        if not 0.0 <= jc_aggressiveness <= 1.0:
+            raise ValueError("jc_aggressiveness must be in [0-1]")
         self.__jc_aggressiveness = jc_aggressiveness
 
         # time based parameters - linear dep. is ok

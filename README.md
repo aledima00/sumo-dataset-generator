@@ -195,7 +195,7 @@ At the end, a summary of the generation is logged on the terminal.
 **Example**
 
 ```bash
-uv run gen.py examples/turn/eval
+uv run gen.py examples/turn/valid
 ```
 
 The non-trivial options in the YAML file are described below.
@@ -257,10 +257,10 @@ uv run sim.py -L <label> --outdir <output_dir> [options] <scenario_path>
 **Example**
 
 ```bash
-uv run sim.py -L 2 --outdir ./out/turn_eval --pack-size 20 -T 4 examples/turn/eval
+uv run sim.py -L 2 --outdir ./out/turn_valid --pack-size 20 -T 4 examples/turn/valid
 ```
 
-Runs the simulation on the `turn/eval` scenario extracting packs labeled as `TURN` (index 2), with pack size 20 and 4 parallel workers.
+Runs the simulation on the `turn/valid` scenario extracting packs labeled as `TURN` (index 2), with pack size 20 and 4 parallel workers.
 
 ### Multi-threading
 
@@ -301,7 +301,7 @@ There is no additional option available, the user must only specify the given ar
 **Example**
 
 ```bash
-uv run lbstats.py ./out/turn_eval/labels.parquet
+uv run lbstats.py ./out/turn_valid/labels.parquet
 ```
 
 ---

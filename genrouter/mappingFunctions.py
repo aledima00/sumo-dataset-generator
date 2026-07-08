@@ -16,7 +16,8 @@ class __MappingFunctions:
     @classmethod
     def exp_01_01(cls,x:float,strength:float=5.0,*,min_val:float=0.0, max_val:float=1.0)->float:
         """ Exponential mapping from [0,1] to [0,1], with f(0)=0+, f(1)=1"""
-        assert strength >= 1.0, "strength must be >= 1.0"
+        if strength < 1.0:
+            raise ValueError("strength must be >= 1.0")
         f = lambda z: _math.exp(strength*(z - 1.0))
         return cls.scaledMinMax(x,min_val,max_val,f)
     
